@@ -1,370 +1,120 @@
-<<<<<<< HEAD
-# DataTrust Connector 前端演示系统
+# DataTrust Connector UI（真实后端版）
 
-这是一个面向可信数据空间数据连接器场景的前端演示页面，用于展示 `TrustGate-DID` 作品中的连接器可信接入、DID-mTLS 认证、数字合约、字段级受控交付、策略动态更新和 Fabric 审计追踪等核心流程。
+这是 `openHiTLS + Indy DID` 的本地运维前端。活动页面已移除 Mock 业务流程，浏览器通过 Connector Gateway 调用仓库中的 `unified_tls_client`，并展示真实进程产生的握手结果、HITLS 错误码、`DID_VerifyResult` 和原生日志。
 
-前端项目基于 `Vite + React + TypeScript` 构建，当前为本地演示版本，页面数据来自 `src/shared/data/mock.ts` 中的 Mock 数据。
+完整的安装、配置、页面操作和排障说明见 [`docs/frontend-usage-guide.zh-CN.md`](docs/frontend-usage-guide.zh-CN.md)。
 
-## 一、运行环境要求
+如果原生客户端未编译或未配置，页面会显示 `unconfigured` 并禁止执行，不会伪造成功结果。
 
-本机需要安装：
-
-- Node.js，建议使用 18 或更高版本
-- npm，通常安装 Node.js 后会自带
-
-可以在终端中检查：
-
-```bash
-node -v
-npm -v
-```
-
-如果能看到版本号，说明环境基本可用。
-
-## 二、在自己电脑上运行前端
-
-### 1. 打开终端
-
-可以使用 Windows PowerShell、CMD、Cursor 内置终端或 VS Code 内置终端。
-
-### 2. 进入前端项目目录
-
-```bash
-cd C:\Users\juzid\Desktop\did\DidWeb
-```
-
-如果你的项目移动到了其他位置，请把路径替换成实际的 `DidWeb` 文件夹路径。
-
-### 3. 安装依赖
-
-第一次运行前需要执行：
-
-```bash
-npm install
-```
-
-如果已经安装过依赖，可以跳过这一步。
-
-### 4. 启动开发服务
-
-```bash
-npm run dev
-```
-
-启动成功后，终端会输出类似下面的地址：
+## 架构
 
 ```text
-Local: http://localhost:5173/
+React / Vite (:5173)
+        │  /api
+        ▼
+Connector Gateway (:8787)
+        │  spawn(shell=false)
+        ▼
+unified_tls_client --auth-mode traditional|did|auto [--mtls|--cert ... --key ...]
+        │
+        ▼
+openHiTLS handshake + Indy VDR GET_NYM
 ```
 
-在浏览器中打开该地址即可访问前端页面。
+Gateway 是必要的：浏览器不能直接调用 C 可执行文件。它还负责固定可执行路径、限制请求体和日志大小、处理超时，并把原生文本输出转换为稳定 JSON。
 
-如果 `5173` 端口被占用，Vite 可能会自动换成 `5174`、`5175` 等端口，请以终端实际显示的 `Local` 地址为准。
+## 已接入的真实数据
 
-## 三、常用命令
+- Gateway 和原生客户端的独立运行状态；
+- Traditional TLS、DID-TLS、Auto 三种原生认证参数；
+- 可选 mTLS；DID/Auto 开启 mTLS 时使用配置的 DID 客户端证书；
+- 实际进程退出码、信号、总耗时和原生握手耗时；
+- HITLS 十六进制错误码和可识别的 TLS Alert；
+- `DID_VerifyResult` 0–7：成功、证书解析失败、DID 未找到、链上查询失败、公钥不匹配、有效期失败、签名失败、内部错误；
+- NORMAL / DID / UNKNOWN 证书模式。原生客户端没有输出的对端信息保持 `UNKNOWN`，前端不会推测；
+- 当前 Gateway 进程内最多 50 条真实握手历史和完整 stdout/stderr。
 
-### 启动开发环境
+## 环境要求
 
-```bash
-npm run dev
-```
+- Node.js 18 或更高版本；
+- 已构建的 `unified_tls_client`；
+- 运行 DID 模式时，原生程序所需的 Indy VDR 库和网络配置必须可用；
+- `127.0.0.1:12346` 上需运行与客户端匹配的 `unified_tls_server`。这是当前 C 示例中的编译期固定目标。
 
-用于本地开发和页面预览。
+## 配置
 
-### 构建生产版本
-
-```bash
-npm run build
-```
-
-用于检查 TypeScript 类型和生成生产构建文件。构建结果会输出到 `dist/` 目录。
-
-### 预览生产构建
-
-```bash
-npm run preview
-```
-
-需要先执行 `npm run build`，再执行该命令预览构建后的页面。
-
-## 四、页面功能介绍
-
-当前前端采用左侧导航切换不同演示页面，整体围绕以下主线：
-
-```text
-连接器注册 → PKI-DID 双轨互信 → DID-mTLS 可信通道 → 数据目录查询 → 数字合约 → 字段级受控交付 → 策略动态更新 → Fabric 审计追踪 → 安全验证
-```
-
-### 1. 演示总览
-
-展示 DataTrust Connector 的端到端数据流通主线，包括连接器注册、X.509 与 DID 绑定、DID-mTLS 可信通道、数据目录、数字合约、字段交付和 Fabric 审计。
-
-### 2. 连接器身份
-
-展示 Provider Connector 和 Consumer Connector 的身份上下文，包括：
-
-- connectorId
-- DID
-- X.509 证书指纹
-- 证书 SAN DID
-- DID Document
-- 公钥一致性校验
-- DID 状态校验
-
-该页面用于体现 PKI-DID 双轨互信机制。
-
-### 3. DID-mTLS 可信通道
-
-展示 DID-mTLS 握手过程，包括：
-
-- ClientHello 携带 DID 认证模式
-- ServerHello 返回 DID 认证模式
-- 证书中携带 DID
-- 查询 DID Document
-- 校验证书公钥与 DID Document 公钥一致性
-- 双向认证完成
-
-该页面用于体现 DID 身份状态接入 TLS 握手认证链路。
-
-### 4. 数据产品目录
-
-展示 Provider Connector 发布的数据产品目录和字段结构。目前 Mock 数据中包含一个订单交易数据产品：
-
-- `order_id`
-- `region`
-- `phone`
-- `id_card`
-- `payment_account`
-
-每个字段具有不同敏感等级，为后续字段级受控交付提供基础。
-
-### 5. 数字合约
-
-展示 Consumer Connector 与 Provider Connector 之间生成的数字合约内容，包括：
-
-- contractId
-- productId
-- providerConnectorId
-- consumerConnectorId
-- purpose
-- validFrom / validTo
-- policyVersion
-- fieldPolicies
-- contractHash
-- fabricTxHash
-
-该页面用于体现数字合约对数据使用目的、有效期和字段策略的约束。
-
-### 6. 字段级受控交付
-
-展示系统如何根据数字合约和字段策略处理 JSON 字段。
-
-当前支持四类字段处理动作：
-
-| 动作 | 含义 |
-| --- | --- |
-| `plain` | 明文返回 |
-| `mask` | 脱敏返回 |
-| `encrypt` | 加密返回 |
-| `deny` | 拒绝返回 |
-
-示例中：
-
-- `order_id` 明文返回
-- `region` 明文返回
-- `phone` 脱敏返回
-- `id_card` 加密返回
-- `payment_account` 拒绝返回
-
-该页面用于体现“接口可访问”不等于“所有字段都可返回”的最小披露机制。
-
-### 7. 策略动态更新
-
-展示字段策略从 `policy v1` 到 `policy v2` 的变化。
-
-例如：
-
-- v1 中 `phone` 字段执行 `mask`
-- v2 中 `phone` 字段调整为 `deny`
-
-该页面用于体现字段级策略可以动态更新，并影响后续数据交付结果。
-
-### 8. Fabric 审计追踪
-
-展示链上审计事件流和 `traceId` 全链路追踪，包括：
-
-- ConnectorRegistered
-- ContractSigned
-- PolicyUpdated
-- DataAccessRequested
-- DataDelivered
-- ViolationDetected
-
-该页面强调链上不保存原始敏感数据，只保存：
-
-- 合约哈希
-- 策略版本
-- 请求摘要
-- 响应摘要
-- traceId
-- Fabric 交易哈希
-
-用于支撑合约履行证明、访问行为追踪和异常事件定位。
-
-### 9. 安全验证
-
-展示多个安全异常场景，例如：
-
-- 未注册 DID
-- 证书公钥与 DID Document 公钥不一致
-- 越权字段访问
-- 过期合约调用
-
-每个场景展示风险输入、拦截位置、处置结果和模拟日志。
-
-## 五、项目目录结构
-
-```text
-DidWeb
-├── index.html
-├── package.json
-├── tsconfig.json
-├── vite.config.ts
-├── README.md
-├── skills
-│   └── datatrust-connector-frontend.skill.md
-└── src
-    ├── App.tsx
-    ├── main.tsx
-    ├── vite-env.d.ts
-    ├── styles
-    │   └── global.css
-    └── shared
-        ├── components
-        │   ├── business
-        │   │   ├── ConnectorCard.tsx
-        │   │   ├── DIDBindingPanel.tsx
-        │   │   ├── FabricEventStream.tsx
-        │   │   ├── JsonBlock.tsx
-        │   │   ├── PolicyMatrix.tsx
-        │   │   ├── SecurityScenarioCard.tsx
-        │   │   └── Timeline.tsx
-        │   └── ui
-        │       ├── SectionCard.tsx
-        │       └── StatusTag.tsx
-        ├── data
-        │   └── mock.ts
-        ├── types
-        │   └── domain.ts
-        └── utils
-            └── format.ts
-```
-
-## 六、核心文件说明
-
-### `src/App.tsx`
-
-前端主页面文件，负责页面导航和主要内容展示。
-
-### `src/shared/data/mock.ts`
-
-Mock 数据文件，包含连接器身份、DID Document、数据产品、数字合约、字段策略、访问链路、Fabric 事件和安全场景。
-
-### `src/shared/types/domain.ts`
-
-领域类型定义文件，用于约束连接器、合约、字段策略、审计事件等数据结构。
-
-### `src/styles/global.css`
-
-全局样式文件，定义页面布局、侧边栏、卡片、表格、时间线、状态标签等样式。
-
-### `skills/datatrust-connector-frontend.skill.md`
-
-前端制作约束文件。后续继续扩展页面时，应继续围绕该 skill 中定义的前端主线、模块划分和展示逻辑进行开发。
-
-## 七、如果页面打不开怎么办
-
-### 1. 检查是否进入正确目录
-
-确保终端当前目录是：
-
-```text
-C:\Users\juzid\Desktop\did\DidWeb
-```
-
-可以执行：
-
-```bash
-pwd
-```
-
-或在 PowerShell 中执行：
+复制示例文件：
 
 ```powershell
-Get-Location
+Copy-Item .env.example .env
 ```
 
-### 2. 检查依赖是否安装
+至少设置：
 
-如果提示找不到 `vite` 或 `react`，执行：
+```dotenv
+HITLS_CLIENT_BIN=/absolute/path/to/unified_tls_client
+HITLS_CLIENT_WORKDIR=/absolute/path/to/openhitls-main/testcode/demo-did
+```
 
-```bash
+需要 DID 双向认证时再设置：
+
+```dotenv
+HITLS_DID_CERT=/absolute/path/to/client_did_cert.der
+HITLS_DID_KEY=/absolute/path/to/client_did_key.der
+```
+
+仅验证服务器 DID 时不需要客户端证书。Windows 上若原生程序运行在 WSL，推荐把 `HITLS_CLIENT_BIN` 指向一个 Windows 可执行包装器，并通过 `HITLS_CLIENT_PREFIX_ARGS`（JSON 字符串数组）传递包装器的固定前置参数。
+
+## 启动
+
+```powershell
 npm install
-```
-
-### 3. 检查端口地址
-
-不要固定只看 `5173`，以终端输出的 `Local` 地址为准。
-
-### 4. 重新启动服务
-
-如果页面卡住或报错，可以停止服务后重新启动。
-
-在终端中按：
-
-```text
-Ctrl + C
-```
-
-然后重新执行：
-
-```bash
 npm run dev
 ```
 
-## 八、后续可扩展方向
+- Web：`http://127.0.0.1:5173`
+- Gateway：`http://127.0.0.1:8787`
 
-后续可以继续扩展：
+Vite 会把 `/api` 代理到 Gateway。生产环境可以用 `VITE_GATEWAY_TARGET` 修改代理目标。
 
-1. 将 `App.tsx` 中不同页面拆分成独立模块。
-2. 增加真实后端接口对接。
-3. 增加 DID-mTLS 握手动画。
-4. 增加 Fabric 事件详情抽屉。
-5. 增加字段策略编辑器。
-6. 增加策略版本对比和访问结果重放。
-7. 增加答辩演示模式，一键按流程播放。
+## API
 
-## 九、当前定位
+| 方法 | 路径 | 说明 |
+| --- | --- | --- |
+| `GET` | `/api/health` | Gateway 与原生后端简要状态 |
+| `GET` | `/api/runtime` | 可公开的运行配置和能力 |
+| `GET` | `/api/handshakes` | 当前进程内的真实执行历史 |
+| `POST` | `/api/handshakes` | 启动一次原生握手 |
 
-当前前端是作品展示和答辩演示原型，重点是把 TrustGate-DID 的系统思路可视化表达出来：
+请求示例：
 
-- 不是普通数据管理后台；
-- 不是传统接口调用页面；
-- 不是单纯 DID 展示页面；
-- 而是围绕可信数据空间中 Provider Connector 与 Consumer Connector 的安全互操作闭环进行展示。
-=======
-# datatrust-connector-ui
-TrustGate-DID Frontend 是一个面向可信数据空间数据连接器场景的前端可视化演示系统，基于 Vite + React + TypeScript 构建，采用 Mock 数据模拟跨域数据流通全过程。系统用于展示连接器在数据交互中的核心流程，包括连接器身份与 DID 绑定、DID-mTLS 可信通道建立、数据产品目录浏览、数字合约协商、字段级受控交付、策略动态更新以及 Fabric 审计追踪。前端通过模块化页面设计，将复杂的数据安全与治理机制转化为可视化交互流程，使用户能够直观理解数据在跨机构流通中的身份认证、访问控制与审计链路。项目不依赖后端服务，可独立运行，适用于可信数据空间、数据安全与数据要素流通等方向的原型展示与教学演示场景。
-# TrustGate-DID
+```json
+{
+  "authMode": "did",
+  "mutualTls": false,
+  "timeoutMs": 15000
+}
+```
 
-TrustGate-DID 是一个面向数据基础设施跨域流通场景的 **PKI-DID 双轨互信身份认证系统原型**，用于解决跨部门、跨机构数据交互中的可信接入问题。
+为避开当前 Indy 集成的线程安全风险，Gateway 同一时间只允许一个握手任务；并发请求返回 `409 HANDSHAKE_BUSY`。
 
-在跨域数据流通中，数据在真正被访问之前，首先需要确认“接入主体是谁”以及“该主体是否可信”。传统 TLS/PKI 体系依赖中心化证书信任模型，在跨机构互认、证书体系差异以及身份状态同步方面存在一定局限。
+## 验证
 
-与此同时，DID（Decentralized Identifier）能够提供去中心化身份标识与可验证公钥状态，但在多数现有方案中，DID 通常停留在应用层认证阶段，难以参与底层连接建立过程。
+```powershell
+npm run test
+npm run build
+npm run check
+```
 
-基于此，TrustGate-DID 提出一种融合机制：  
-在不替代 TLS/PKI 的前提下，将 DID 身份状态引入 TLS/mTLS 握手认证链路，构建 **PKI + DID 双轨协同的可信接入体系**，用于跨域数据流通的前置身份认证阶段。
+测试覆盖原生成功/失败/超时输出解析、Traditional 参数、单向 DID 参数，以及 DID mTLS 证书配置校验。
 
-系统目标不是重构传输协议，而是在现有 TLS 安全能力之上扩展身份语义，使连接器身份从“证书有效”升级为“证书有效 + DID 状态可信”的统一判定模型，从而为后续的数据目录访问、数字合约执行与数据交付提供可信身份基础。
->>>>>>> 815423339a104abbeae0a8130c09f63d6bfdcd3d
+## 主要目录
+
+```text
+server/                         Connector Gateway 与原生进程适配
+shared/runtime-contract.ts      前后端共用 API 类型
+src/modules/runtime/            运行状态、握手和历史页面
+src/shared/services/            HTTP API 客户端
+```
+
+旧版 `src/shared/data/mock.ts` 和演示组件仍保留作为历史参考，但不再被活动应用入口导入，也不会影响任何运行结果。
