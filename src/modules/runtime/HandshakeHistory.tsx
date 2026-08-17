@@ -8,7 +8,7 @@ function tone(status: HandshakeResult["status"]) {
 
 export function HandshakeHistory({ items, onSelect }: { items: HandshakeResult[]; onSelect: (item: HandshakeResult) => void }) {
   return (
-    <SectionCard title="真实握手历史" eyebrow="In-memory gateway history" className="history-card">
+    <SectionCard title="认证执行历史" eyebrow="In-memory gateway history" className="history-card">
       {items.length === 0 ? (
         <div className="empty-state compact-empty"><h3>暂无执行记录</h3><p>历史只记录当前 Gateway 进程中实际执行过的握手。</p></div>
       ) : (

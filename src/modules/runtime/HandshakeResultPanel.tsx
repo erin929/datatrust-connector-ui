@@ -14,7 +14,7 @@ export function HandshakeResultPanel({ result }: { result: HandshakeResult | nul
   if (!result) {
     return (
       <SectionCard title="握手结果" eyebrow="Native result" className="result-card">
-        <div className="empty-state"><span>↗</span><h3>等待真实握手</h3><p>执行后将在这里展示原生进程返回的证书模式、DID 校验、HITLS 错误码和完整日志。</p></div>
+        <div className="empty-state"><span>↗</span><h3>等待认证执行</h3><p>执行后将在这里展示原生进程返回的证书模式、DID 校验、HITLS 错误码和完整日志。</p></div>
       </SectionCard>
     );
   }

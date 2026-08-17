@@ -5,15 +5,14 @@ import type { HandshakeRequest, HandshakeResult } from "../../../shared/runtime-
 import { StatusTag } from "../../shared/components/ui/StatusTag";
 import { getHandshakeHistory, getPreflight, getRuntime, postHandshake } from "../../shared/services/runtime-api";
 import { HandshakeHistory } from "./HandshakeHistory";
-import { HandshakeResultPanel } from "./HandshakeResultPanel";
-import { HandshakeWorkspace } from "./HandshakeWorkspace";
 import { RuntimeOverview } from "./RuntimeOverview";
+import { SecurityValidation } from "./SecurityValidation";
 
-type View = "runtime" | "handshake" | "history";
+type View = "runtime" | "verification" | "history";
 
 const VIEWS: { id: View; label: string; caption: string }[] = [
   { id: "runtime", label: "运行状态", caption: "Gateway、板卡与 Indy" },
-  { id: "handshake", label: "真实握手", caption: "SSH 调度双板卡" },
+  { id: "verification", label: "身份认证与互信验证", caption: "六类认证与安全实验" },
   { id: "history", label: "结果历史", caption: "错误码与原生日志" },
 ];
 
@@ -32,11 +31,12 @@ export function RuntimeConsole() {
       (current) => ({ items: [result, ...(current?.items ?? []).filter((item) => item.id !== result.id)] }),
       { revalidate: false },
     );
+    return result;
   };
 
   const selectHistory = (result: HandshakeResult) => {
     setSelectedResult(result);
-    setView("handshake");
+    setView("verification");
   };
 
   const gatewayOnline = Boolean(runtime.data);
@@ -77,7 +77,7 @@ export function RuntimeConsole() {
         ) : (
           <>
             {view === "runtime" ? <RuntimeOverview runtime={runtime.data} preflight={preflight.data} preflightLoading={preflight.isLoading || preflight.isValidating} preflightError={preflight.error} onRefreshPreflight={() => void preflight.mutate()} /> : null}
-            {view === "handshake" ? <div className="workspace-grid"><HandshakeWorkspace runtime={runtime.data} preflight={preflight.data} running={mutation.isMutating} error={mutation.error} onRun={runHandshake} /><HandshakeResultPanel result={selectedResult} /></div> : null}
+            {view === "verification" ? <SecurityValidation runtime={runtime.data} preflight={preflight.data} running={mutation.isMutating} error={mutation.error} selectedResult={selectedResult} onRun={runHandshake} /> : null}
             {view === "history" ? <HandshakeHistory items={history.data?.items ?? []} onSelect={selectHistory} /> : null}
           </>
         )}

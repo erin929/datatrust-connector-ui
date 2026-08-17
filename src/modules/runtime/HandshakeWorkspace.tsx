@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from "react";
-import type { AuthMode, HandshakeRequest, RuntimeInfo, RuntimePreflight } from "../../../shared/runtime-contract";
+import type { AuthMode, HandshakeRequest, HandshakeResult, RuntimeInfo, RuntimePreflight } from "../../../shared/runtime-contract";
 import { SectionCard } from "../../shared/components/ui/SectionCard";
 import { StatusTag } from "../../shared/components/ui/StatusTag";
 import { ApiRequestError } from "../../shared/services/runtime-api";
@@ -15,7 +15,7 @@ type Props = {
   preflight?: RuntimePreflight;
   running: boolean;
   error?: Error;
-  onRun: (request: HandshakeRequest) => Promise<void>;
+  onRun: (request: HandshakeRequest) => Promise<HandshakeResult>;
 };
 
 export function HandshakeWorkspace({ runtime, preflight, running, error, onRun }: Props) {
@@ -48,7 +48,6 @@ export function HandshakeWorkspace({ runtime, preflight, running, error, onRun }
   const disabled =
     running ||
     !backendReady ||
-    !hardwareBoardsReady ||
     autoUnsupported ||
     clientProfileMissing ||
     didServerProfileMissing ||
@@ -67,7 +66,7 @@ export function HandshakeWorkspace({ runtime, preflight, running, error, onRun }
 
   return (
     <div className="handshake-layout">
-      <SectionCard title="发起真实握手" eyebrow="POST /api/handshakes" className="control-card">
+      <SectionCard title="连接认证执行" eyebrow="POST /api/handshakes" className="control-card">
         <form onSubmit={submit}>
           <fieldset className="mode-fieldset">
             <legend>认证模式</legend>
@@ -95,14 +94,14 @@ export function HandshakeWorkspace({ runtime, preflight, running, error, onRun }
             <StatusTag tone={backendReady && hardwareBoardsReady ? "success" : "warning"}>{backendReady && hardwareBoardsReady ? runtime.backend.status : "hardware unavailable"}</StatusTag>
           </div>
           {!backendReady ? <div className="callout callout--warning">{runtime.backend.reason}</div> : null}
-          {!hardwareBoardsReady ? <div className="callout callout--warning">板卡21或板卡22预检尚未通过。请先到“运行状态”检查 SSH、远程文件和动态库。</div> : null}
+          {!hardwareBoardsReady ? <div className="callout callout--warning">板卡21或板卡22预检尚未通过。按钮仍允许发起真实尝试；若硬件确实不可达，Gateway 会返回对应 SSH 错误。</div> : null}
           {autoUnsupported ? <div className="callout callout--warning">硬件版 tls_client/tls_server 只对齐 Traditional TLS 和 DID-TLS；Gateway 不会把 --fallback 冒充成旧 Auto。</div> : null}
           {clientProfileMissing ? <div className="callout callout--warning">当前板卡程序的双向认证需要配置远程客户端证书和私钥路径；关闭双向认证仍可验证服务器 DID。</div> : null}
           {didServerProfileMissing ? <div className="callout callout--warning">托管 DID / Auto 服务器需要配置 HITLS_SERVER_DID_CERT 和 HITLS_SERVER_DID_KEY。</div> : null}
           {indyLedgerMissing ? <div className="callout callout--warning">DID / Auto 需要真实 Indy 账本 Genesis；请检查 {runtime.backend.transport === "ssh" ? "HITLS_REMOTE_GENESIS_PATH" : "INDY_GENESIS_PATH"}。</div> : null}
           {ledgerPreflightFailed ? <div className="callout callout--warning">Indy 端口预检未通过；仍可查看配置，但 DID 握手不能被认定为链上成功，建议先修复账本网络。</div> : null}
           {apiError ? <div className="callout callout--danger"><strong>{apiError.code}</strong><span>{apiError.message}</span></div> : error ? <div className="callout callout--danger">{error.message}</div> : null}
-          <button className="run-button" type="submit" disabled={disabled}>{running ? <><span className="spinner" />硬件握手执行中</> : runtime.backend.transport === "ssh" ? "通过 SSH 执行真实握手" : "执行 openHiTLS 握手"}</button>
+          <button className="run-button" type="submit" disabled={disabled}>{running ? <><span className="spinner" />认证策略执行中</> : runtime.backend.transport === "ssh" ? "通过 SSH 执行连接认证" : "执行 openHiTLS 连接认证"}</button>
           <p className="safety-note">Gateway 只使用固定的板卡、程序和证书配置；浏览器不能提交 SSH 命令或可执行路径。</p>
         </form>
       </SectionCard>

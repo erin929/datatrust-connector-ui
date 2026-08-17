@@ -1,4 +1,4 @@
-# DataTrust Connector UI（双板卡真实握手版）
+# DataTrust Connector UI（身份认证与互信验证版）
 
 这是 `openHiTLS + Indy DID` 的真实控制前端。页面保持原有运营平台风格，由控制电脑上的 Connector Gateway 通过 SSH 调度两块鸿蒙智能基座：
 
