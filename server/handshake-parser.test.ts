@@ -20,6 +20,26 @@ test("reports DID success only with positive GET_NYM evidence", () => {
   assert.equal(outcome.didVerification.name, "DID_VERIFY_SUCCESS");
 });
 
+test("recognizes the latest hardware handshake success format", () => {
+  const outcome = parseNativeOutcome(
+    logs(
+      "[DEBUG] peer certificate dumped: /tmp/did_peer_cert.der, len=414",
+      "[INDY_VERKEY_OK] FAe4sisG95oZ42w7buUn5qEE4TAnfTTFPiguZUHmhiF",
+      "[INFO] ✓ GET_NYM链上查询成功 (耗时: 57.387 ms)",
+      "[INFO] ✓ DID公钥验证成功\\n[INFO] TLS handshake SUCCESS, time: 73 ms",
+    ),
+    "did",
+    0,
+    false,
+  );
+
+  assert.equal(outcome.status, "succeeded");
+  assert.equal(outcome.completed, true);
+  assert.equal(outcome.nativeHandshakeMs, 73);
+  assert.equal(outcome.didVerification.status, "succeeded");
+  assert.equal(outcome.didVerification.name, "DID_VERIFY_SUCCESS");
+});
+
 test("does not claim on-chain DID success when Indy-VDR was disabled", () => {
   const outcome = parseNativeOutcome(
     logs(

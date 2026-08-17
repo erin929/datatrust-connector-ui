@@ -79,7 +79,7 @@ const hardwareConfig: NativeRuntimeConfig = {
   transport: "ssh",
   executablePath: "./tls_client",
   executableName: "tls_client",
-  target: { host: "192.168.50.21", port: 12347 },
+  target: { host: "192.168.50.21", port: 12345 },
   managedServer: {
     ...config.managedServer,
     enabled: true,

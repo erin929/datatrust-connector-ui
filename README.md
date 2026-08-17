@@ -9,7 +9,7 @@
 控制电脑：React 静态页面 + Node Gateway
     ├── SSH ──► 板卡21：tls_server
     └── SSH ──► 板卡22：tls_client
-                      │ DID-TLS 192.168.50.21:12347
+                      │ DID-TLS 192.168.50.21:12345
                       ▼
                    板卡21
     两块板卡 ───────► Indy Ledger 192.168.50.100
@@ -23,7 +23,7 @@
 
 - 板卡21运行 `/root/openhitls-main/testcode/demo-did/build/tls_server`；
 - 板卡22运行 `/root/openhitls-main/testcode/demo-did/build/tls_client`；
-- 当前客户端二进制固定连接 `192.168.50.21:12347`；
+- 当前最新客户端和服务端二进制实际使用 `192.168.50.21:12345`；
 - 支持 Traditional TLS、DID-TLS，以及两者的 mTLS；
 - 最新 `--fallback` 不等价于旧 `Auto`，所以硬件模式禁用 Auto；
 - DID 成功必须出现验证端的 `GET_NYM链上查询成功` 日志；出现 Indy-VDR 未初始化/未编译警告时不会报告链上验证成功；

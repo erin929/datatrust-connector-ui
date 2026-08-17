@@ -398,7 +398,7 @@ function resultFromExecution(
     },
     negotiation: {
       localCertificateMode,
-      peerCertificateMode: "UNKNOWN",
+      peerCertificateMode: parsed.didVerification.status === "succeeded" ? "DID" : "UNKNOWN",
       clientDidAuthMode: authModeValue,
       serverDidAuthMode: config.managedServer.enabled ? authModeValue : null,
       fallbackMode: config.transport === "local" && request.authMode === "auto",

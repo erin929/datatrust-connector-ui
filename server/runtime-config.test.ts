@@ -6,7 +6,7 @@ test("loads the latest two-board SSH defaults without treating remote paths as l
   const config = loadRuntimeConfig({ HITLS_TRANSPORT: "ssh" }, process.cwd());
   assert.equal(config.status, "ready");
   assert.equal(config.target.host, "192.168.50.21");
-  assert.equal(config.target.port, 12347);
+  assert.equal(config.target.port, 12345);
   assert.equal(config.ssh?.client.executablePath, "./tls_client");
   assert.equal(config.ssh?.server.executablePath, "./tls_server");
 

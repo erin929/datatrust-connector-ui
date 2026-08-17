@@ -13,7 +13,7 @@
 ```text
 浏览器 → 控制电脑:8787 → SSH → 板卡21 tls_server
                        └──→ SSH → 板卡22 tls_client
-板卡22 ── 192.168.50.21:12347 ──→ 板卡21
+板卡22 ── 192.168.50.21:12345 ──→ 板卡21
 板卡21 / 板卡22 ──→ Indy Ledger 192.168.50.100
 ```
 
@@ -31,7 +31,7 @@
 关键事实：
 
 - 二进制是 ARM64 Linux ELF，保留在板卡运行，不应复制到 Windows 直接执行；
-- 最新客户端源码连接 `192.168.50.21:12347`；配置中的目标和端口用于页面展示、服务端就绪检测，必须与实际二进制一致；
+- 最新客户端和服务端二进制实际使用 `192.168.50.21:12345`；配置中的目标和端口用于页面展示、服务端就绪检测，必须与实际二进制一致；
 - 两块板卡需要 `/root/openhitls-main/build` 和 `/root/indy-vdr/target/release` 中的动态库；
 - Genesis 默认路径为 `/root/openhitls-main/testcode/demo-did/pool_transactions_genesis`；
 - Genesis 中的验证节点位于 `192.168.50.100`，客户端端口包括 `9702/9704/9706/9708`；
@@ -119,7 +119,7 @@ HITLS_DID_KEY=../client_did_key.der
 
 HITLS_REMOTE_LIBRARY_PATH=/root/openhitls-main/build:/root/indy-vdr/target/release
 HITLS_TLS_TARGET=192.168.50.21
-HITLS_TLS_PORT=12347
+HITLS_TLS_PORT=12345
 HITLS_INDY_HOST=192.168.50.100
 HITLS_INDY_PORT=9702
 HITLS_REMOTE_GENESIS_PATH=/root/openhitls-main/testcode/demo-did/pool_transactions_genesis
@@ -251,7 +251,7 @@ LD_LIBRARY_PATH=/root/openhitls-main/build:/root/indy-vdr/target/release ldd ./t
 
 ### `NATIVE_SERVER_START_TIMEOUT`
 
-最常见原因是实际二进制监听端口与 `.env` 中 `HITLS_TLS_PORT` 不一致，或者板卡21已有进程占用端口。当前最新源码默认是 `12347`。
+最常见原因是实际二进制监听端口与 `.env` 中 `HITLS_TLS_PORT` 不一致，或者板卡21已有进程占用端口。当前最新二进制实际使用 `12345`。
 
 ### TLS 成功但 DID 显示失败/unknown
 

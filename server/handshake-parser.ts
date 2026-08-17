@@ -44,7 +44,9 @@ function findHitlsCode(text: string) {
 }
 
 function findNativeHandshakeMs(text: string) {
-  const match = text.match(/(?:握手完成，用时|握手成功)[:： (]*([0-9]+)\s*ms/iu);
+  const match = text.match(
+    /(?:握手完成，用时|握手成功|TLS\s+handshake\s+SUCCESS,\s*time)[:： (]*([0-9]+)\s*ms/iu,
+  );
   return match?.[1] ? Number(match[1]) : null;
 }
 

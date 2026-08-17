@@ -259,7 +259,7 @@ export function loadRuntimeConfig(
           : env.HITLS_FIXED_HOST?.trim() || "127.0.0.1",
       port:
         transport === "ssh"
-          ? parsePort(env.HITLS_TLS_PORT, 12347)
+          ? parsePort(env.HITLS_TLS_PORT, 12345)
           : parsePort(env.HITLS_FIXED_PORT, 12346),
     },
     didCertificatePath,
