@@ -6,17 +6,34 @@ import { parseNativeOutcome } from "./handshake-parser.js";
 function logs(...messages: string[]): HandshakeLogEntry[] {
   return messages.map((message, sequence) => ({
     sequence,
+    source: "client",
     stream: "stdout",
     level: message.includes("ERROR") ? "error" : "info",
     message,
   }));
 }
 
-test("parses a successful native DID handshake", () => {
-  const outcome = parseNativeOutcome(logs("认证模式: DID TLS", "握手完成，用时: 37 ms"), "did", 0, false);
+test("reports DID success only with positive GET_NYM evidence", () => {
+  const outcome = parseNativeOutcome(logs("认证模式: DID TLS", "TLS握手完成，用时: 37 ms", "[INFO] ✓ GET_NYM链上查询成功 (耗时: 3.2 ms)"), "did", 0, false);
   assert.equal(outcome.status, "succeeded");
   assert.equal(outcome.nativeHandshakeMs, 37);
   assert.equal(outcome.didVerification.name, "DID_VERIFY_SUCCESS");
+});
+
+test("does not claim on-chain DID success when Indy-VDR was disabled", () => {
+  const outcome = parseNativeOutcome(
+    logs(
+      "[WARN] Indy-VDR initialization failed, blockchain verification will be disabled",
+      "TLS握手完成，用时: 18 ms",
+    ),
+    "did",
+    0,
+    false,
+  );
+  assert.equal(outcome.status, "succeeded");
+  assert.equal(outcome.didVerification.status, "failed");
+  assert.equal(outcome.didVerification.name, "DID_VERIFY_BLOCKCHAIN_FAIL");
+  assert.equal(outcome.didVerification.verifyOnChain, false);
 });
 test("preserves a detailed DID verification failure next to the HITLS code", () => {
   const outcome = parseNativeOutcome(

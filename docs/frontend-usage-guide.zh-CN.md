@@ -1,355 +1,263 @@
-# DataTrust Connector 前端使用指南
+# DataTrust Connector 双板卡前端使用指南
 
-## 1. 前端用途
+## 1. 系统职责
 
-本前端用于操作和观察 `openHiTLS + Indy DID` 的真实握手流程。
+这套系统包含三个不同的“后端角色”：
 
-调用链如下：
+1. 控制电脑上的 Connector Gateway：接受浏览器请求并执行 SSH 调度；
+2. 板卡21上的 `tls_server`：真实 DID-TLS 服务端；
+3. `192.168.50.100` 上的 Indy Ledger：DID 链上查询依赖。
+
+板卡22运行真实客户端 `tls_client`。浏览器本身不能执行 SSH，也不能直接运行 ARM64 二进制，因此 Gateway 必须部署在能够访问两块板卡的控制电脑上。
 
 ```text
-浏览器
-  → Connector Gateway
-  → unified_tls_client
-  → openHiTLS TLS/DID-TLS 握手
-  → Indy VDR 链上 DID 验证
+浏览器 → 控制电脑:8787 → SSH → 板卡21 tls_server
+                       └──→ SSH → 板卡22 tls_client
+板卡22 ── 192.168.50.21:12347 ──→ 板卡21
+板卡21 / 板卡22 ──→ Indy Ledger 192.168.50.100
 ```
 
-页面不会在浏览器中模拟握手。原生客户端未配置时，系统会显示 `unconfigured` 并禁止执行，不会产生虚假的成功记录。
+前端代码可以在任意电脑开发；真实握手必须到连接企业路由器和板卡的控制电脑上验证。
 
-## 2. 使用前准备
+## 2. 当前原生代码契约
 
-需要准备：
+本项目按用户提供的最新两个源码包对齐：
 
-1. Node.js 18 或更高版本；
-2. 已编译的 `unified_tls_client`；
-3. 正在监听 `127.0.0.1:12346` 的 `unified_tls_server`；
-4. 使用 DID 模式时，原生程序所需的 Indy VDR 动态库、网络配置和账本连接必须可用；
-5. 使用 DID 双向认证时，需要客户端 DID 证书和私钥。
+| 设备 | 工作目录 | 程序 |
+| --- | --- | --- |
+| 板卡21 | `/root/openhitls-main/testcode/demo-did/build` | `./tls_server` |
+| 板卡22 | `/root/openhitls-main/testcode/demo-did/build` | `./tls_client` |
 
-检查 Node.js：
+关键事实：
+
+- 二进制是 ARM64 Linux ELF，保留在板卡运行，不应复制到 Windows 直接执行；
+- 最新客户端源码连接 `192.168.50.21:12347`；配置中的目标和端口用于页面展示、服务端就绪检测，必须与实际二进制一致；
+- 两块板卡需要 `/root/openhitls-main/build` 和 `/root/indy-vdr/target/release` 中的动态库；
+- Genesis 默认路径为 `/root/openhitls-main/testcode/demo-did/pool_transactions_genesis`；
+- Genesis 中的验证节点位于 `192.168.50.100`，客户端端口包括 `9702/9704/9706/9708`；
+- 最新 `tls_*` 没有与旧 `unified_tls_* --auth-mode auto` 等价的 Auto 协商。`--fallback` 不能直接冒充 Auto，所以硬件页面禁用 Auto。
+
+## 3. 控制电脑准备
+
+### 3.1 软件
+
+- Node.js `^20.19.0` 或 `>=22.12.0`；
+- Git；
+- Windows OpenSSH 客户端；
+- 能够访问 `192.168.50.21`、`.22`、`.100` 的网卡和路由。
+
+检查：
 
 ```powershell
 node -v
 npm -v
+ssh -V
+Test-NetConnection 192.168.50.21 -Port 22
+Test-NetConnection 192.168.50.22 -Port 22
+Test-NetConnection 192.168.50.100 -Port 9702
 ```
 
-## 3. 安装前端
+### 3.2 配置非交互 SSH
 
-进入项目目录：
+Gateway 使用 `BatchMode=yes`，运行握手时不会弹出密码输入框。应使用 SSH 私钥或已加载密钥的 ssh-agent。
+
+如果还没有专用密钥：
 
 ```powershell
-cd F:\openhitls-main-share\datatrust-connector-ui-real
+ssh-keygen -t ed25519 -f $env:USERPROFILE\.ssh\datatrust_boards
 ```
 
-安装依赖：
+将 `.pub` 公钥加入两块板卡的 `/root/.ssh/authorized_keys`，然后分别手工连接一次，核对主机指纹并写入 `known_hosts`：
 
 ```powershell
+ssh -i $env:USERPROFILE\.ssh\datatrust_boards root@192.168.50.21
+ssh -i $env:USERPROFILE\.ssh\datatrust_boards root@192.168.50.22
+```
+
+最后确认非交互登录：
+
+```powershell
+ssh -o BatchMode=yes -i $env:USERPROFILE\.ssh\datatrust_boards root@192.168.50.21 "printf READY"
+ssh -o BatchMode=yes -i $env:USERPROFILE\.ssh\datatrust_boards root@192.168.50.22 "printf READY"
+```
+
+两条命令都应直接输出 `READY`。
+
+## 4. 安装与配置
+
+```powershell
+git clone https://github.com/erin929/datatrust-connector-ui.git
+cd datatrust-connector-ui
 npm install
-```
-
-复制环境变量模板：
-
-```powershell
 Copy-Item .env.example .env
 ```
 
-## 4. 配置原生后端
-
-编辑项目根目录下的 `.env`。
-
-### 4.1 最小配置
+编辑 `.env`。典型控制电脑配置如下：
 
 ```dotenv
-GATEWAY_HOST=127.0.0.1
+GATEWAY_HOST=0.0.0.0
 GATEWAY_PORT=8787
+HITLS_TRANSPORT=ssh
+HITLS_SSH_BIN=C:\Windows\System32\OpenSSH\ssh.exe
+HITLS_SSH_STRICT_HOST_KEY_CHECKING=yes
 
-HITLS_CLIENT_BIN=/absolute/path/to/unified_tls_client
-HITLS_CLIENT_WORKDIR=/absolute/path/to/openhitls-main/testcode/demo-did
+HITLS_SERVER_SSH_HOST=192.168.50.21
+HITLS_SERVER_SSH_USER=root
+HITLS_SERVER_SSH_IDENTITY=C:\Users\你的用户名\.ssh\datatrust_boards
+HITLS_SERVER_WORKDIR=/root/openhitls-main/testcode/demo-did/build
+HITLS_SERVER_BIN=./tls_server
+HITLS_SERVER_DID_CERT=./certs/server_indy_cert.der
+HITLS_SERVER_DID_KEY=./certs/server_indy_key.der
 
-HITLS_FIXED_HOST=127.0.0.1
-HITLS_FIXED_PORT=12346
+HITLS_CLIENT_SSH_HOST=192.168.50.22
+HITLS_CLIENT_SSH_USER=root
+HITLS_CLIENT_SSH_IDENTITY=C:\Users\你的用户名\.ssh\datatrust_boards
+HITLS_CLIENT_WORKDIR=/root/openhitls-main/testcode/demo-did/build
+HITLS_CLIENT_BIN=./tls_client
+HITLS_DID_CERT=../client_did_cert.der
+HITLS_DID_KEY=../client_did_key.der
+
+HITLS_REMOTE_LIBRARY_PATH=/root/openhitls-main/build:/root/indy-vdr/target/release
+HITLS_TLS_TARGET=192.168.50.21
+HITLS_TLS_PORT=12347
+HITLS_INDY_HOST=192.168.50.100
+HITLS_INDY_PORT=9702
+HITLS_REMOTE_GENESIS_PATH=/root/openhitls-main/testcode/demo-did/pool_transactions_genesis
 ```
 
-配置项说明：
+私钥路径只存在于控制电脑 `.env`；`.env` 已被 Git 忽略，不能提交到仓库。浏览器 API 不会返回私钥路径。
 
-| 配置项 | 是否必需 | 用途 |
-| --- | --- | --- |
-| `GATEWAY_HOST` | 否 | Gateway 监听地址，默认 `127.0.0.1` |
-| `GATEWAY_PORT` | 否 | Gateway 端口，默认 `8787` |
-| `HITLS_CLIENT_BIN` | 是 | `unified_tls_client` 的绝对路径 |
-| `HITLS_CLIENT_WORKDIR` | 建议 | 原生进程工作目录 |
-| `HITLS_CLIENT_PREFIX_ARGS` | 否 | 固定前置参数，格式必须为 JSON 字符串数组 |
-| `HITLS_FIXED_HOST` | 否 | 页面显示的原生客户端固定目标地址 |
-| `HITLS_FIXED_PORT` | 否 | 页面显示的原生客户端固定目标端口 |
+## 5. 启动与远程访问
 
-当前 `unified_tls_client.c` 将目标地址和端口编译为 `127.0.0.1:12346`。`HITLS_FIXED_HOST/PORT` 只用于让页面显示值与该二进制文件保持一致，不能动态修改 C 程序的连接目标。
-
-### 4.2 DID 双向认证配置
-
-只有在 DID 或 Auto 模式中开启“双向认证”时，才需要以下配置：
-
-```dotenv
-HITLS_DID_CERT=/absolute/path/to/client_did_cert.der
-HITLS_DID_KEY=/absolute/path/to/client_did_key.der
-```
-
-关闭双向认证时，DID 模式仍会验证服务器证书中的 Indy DID，不需要客户端证书。
-
-### 4.3 Windows 路径示例
-
-如果使用 Windows 原生可执行文件，可以写为：
-
-```dotenv
-HITLS_CLIENT_BIN=F:\openhitls-main-share\openhitls-main\testcode\demo-did\unified_tls_client.exe
-HITLS_CLIENT_WORKDIR=F:\openhitls-main-share\openhitls-main\testcode\demo-did
-HITLS_DID_CERT=F:\openhitls-main-share\openhitls-main\testcode\demo-did\client_did_cert.der
-HITLS_DID_KEY=F:\openhitls-main-share\openhitls-main\testcode\demo-did\client_did_key.der
-```
-
-如果原生程序运行在 WSL/Linux 中，建议 Gateway 和原生程序运行在同一个 Linux 文件系统环境，避免 Windows 与 Linux 证书路径格式不一致。
-
-## 5. 启动系统
-
-### 5.1 启动原生服务器
-
-先在 openHiTLS 的运行环境中启动与测试场景匹配的 `unified_tls_server`。
-
-传统 TLS 示例：
-
-```bash
-cd /path/to/openhitls-main/testcode/demo-did
-./unified_tls_server --auth-mode traditional
-```
-
-DID-TLS 示例：
-
-```bash
-./unified_tls_server \
-  --auth-mode did \
-  --cert ./server_did_cert.der \
-  --key ./server_did_key.der
-```
-
-Auto 示例：
-
-```bash
-./unified_tls_server \
-  --auth-mode auto \
-  --cert ./server_did_cert.der \
-  --key ./server_did_key.der
-```
-
-服务器的实际参数以当前 C 程序的 `--help` 输出为准：
-
-```bash
-./unified_tls_server --help
-```
-
-当前示例服务器每次启动只接受一次客户端连接。再次执行前端握手前，需要重新启动服务器。
-
-### 5.2 启动前端和 Gateway
+### 开发模式
 
 ```powershell
-cd F:\openhitls-main-share\datatrust-connector-ui-real
 npm run dev
 ```
 
-正常情况下会启动：
+- Vite 页面：`http://控制电脑IP:5173`
+- Gateway：`http://控制电脑IP:8787`
 
-- 前端：`http://127.0.0.1:5173`
-- Gateway：`http://127.0.0.1:8787`
+### 生产模式（推荐用于演示和远程操作）
 
-在浏览器中打开前端地址即可。
+```powershell
+npm run build
+npm start
+```
 
-如果 `5173` 已被占用，Vite 会自动选择其他端口，以终端输出为准。Gateway 默认固定使用 `8787`；该端口被占用时需要先停止重复进程，或者同时修改 `.env` 与 Vite 的 Gateway 目标配置。
+Gateway 会直接托管构建后的 `dist/`，其他同一受信任局域网中的电脑只需访问：
 
-## 6. 页面使用方法
+```text
+http://控制电脑IP:8787
+```
 
-### 6.1 运行状态
+如果无法访问，给 Windows 防火墙添加 TCP `8787` 入站规则。不要把 Gateway、板卡 SSH 或 Indy 端口直接映射到公网；互联网远程访问应使用 VPN 或安全隧道。
 
-“运行状态”页面分开显示两个组件：
+## 6. 运行状态与预检
 
-- `Connector Gateway`：浏览器能够访问本地 HTTP API；
-- `openHiTLS 原生后端`：Gateway 能够找到配置的原生客户端。
+“运行状态”页会并行检查：
 
-原生后端状态含义：
+- 板卡21：SSH、工作目录、`tls_server` 执行权限、DID 证书、Genesis、动态库；
+- 板卡22：SSH、工作目录、`tls_client` 执行权限、客户端证书、Genesis、动态库；
+- Indy Ledger：从控制电脑测试配置的客户端端口是否可连接。
+
+预检状态：
 
 | 状态 | 含义 |
 | --- | --- |
-| `ready` | 原生客户端路径有效，可以发起握手 |
-| `unconfigured` | 没有配置 `HITLS_CLIENT_BIN` |
-| `unavailable` | 路径不存在、不是文件或工作目录不可用 |
+| `ready` | 当前检查通过 |
+| `unreachable` | 网络、SSH、主机指纹或认证失败 |
+| `misconfigured` | 远程目录、程序、证书、Genesis 或动态库缺失 |
 
-页面还会显示：
+端口预检只是网络检查。DID 是否真正完成链上查询，最终以握手中的原生 `GET_NYM` 日志为准。
 
-- 固定连接目标；
-- 使用的适配器；
-- DID 客户端证书是否就绪；
-- Gateway 版本、启动时间和运行时长。
+## 7. 真实握手模式
 
-### 6.2 真实握手
+Gateway 固定生成以下命令，页面不能提交任意参数：
 
-进入“真实握手”页面后选择认证模式。
+| 模式 | 板卡21 | 板卡22 |
+| --- | --- | --- |
+| Traditional | `./tls_server` | `./tls_client` |
+| Traditional mTLS | `./tls_server --mtls` | `./tls_client --mtls --client-cert … --client-key …` |
+| DID | `./tls_server --did --server-cert … --server-key …` | `./tls_client --did` |
+| DID mTLS | DID 服务端参数再加 `--mtls` | DID 客户端参数再加 `--mtls --client-cert … --client-key …` |
 
-#### Traditional TLS
+一次执行的顺序：
 
-只执行传统 PKI/TLS 验证。
+1. 通过 SSH 在板卡21启动一次性服务端，并为本次运行写入独立远程 PID 文件；
+2. 使用 `ss`/`netstat` 确认配置端口已监听；
+3. 通过另一条 SSH 连接在板卡22启动客户端；
+4. 收集两个进程的 stdout、stderr、退出码和耗时；
+5. 成功、失败或超时后清理两端本次运行的 PID，不会使用宽泛的 `pkill`；
+6. Gateway 同一时间只执行一组握手，避免当前 Indy 集成的并发风险。
 
-- 关闭双向认证：`unified_tls_client --auth-mode traditional`
-- 开启双向认证：额外传入 `--mtls`
+## 8. 结果判定
 
-#### DID-TLS
+TLS 结果和 DID 结果分开判定：
 
-执行服务器证书中的 Indy DID 解析、链上查询和公钥匹配。
+- 客户端退出码为 `0` 且输出握手耗时，TLS 状态才是 `succeeded`；
+- DID 单向认证要求板卡22日志出现 `GET_NYM链上查询成功`；
+- DID mTLS 要求板卡22和板卡21都出现该链上成功证据；
+- 出现 `Indy-VDR initialization failed`、`indy-vdr支持未编译` 或“链上验证被禁用”时，不能显示 DID 链上成功；
+- 原生端没有报告证书协商字段时保持 `UNKNOWN`，页面不会猜测；
+- 日志按 `client/out`、`client/err`、`server/out`、`server/err` 和 `gateway` 标记来源。
 
-- 关闭双向认证：验证服务器 DID，不发送客户端证书；
-- 开启双向认证：额外传入配置的 `--cert` 和 `--key`，双方进行证书认证。
+DID 错误码仍按 `DID_VerifyResult` 0–7 展示：成功、证书解析失败、DID 未找到、链上失败、公钥不匹配、有效期失败、签名失败和内部错误。
 
-#### Auto
+## 9. 常见问题
 
-使用 openHiTLS 扩展协商认证模式。当前原生代码在 Auto 模式中启用 DID 优先和传统 TLS 回退。
+### `Host key verification failed`
 
-#### 超时时间
+先在运行 Gateway 的同一 Windows 用户下手工执行 `ssh root@板卡IP`，核对指纹。不要为了省事长期设置 `StrictHostKeyChecking=no`。
 
-允许范围为 `1000` 到 `120000` 毫秒，默认 `15000` 毫秒。超过时间后 Gateway 会终止原生进程，结果显示为 `timed_out`。
+### `Permission denied (publickey,password)`
 
-确认配置后点击“执行 openHiTLS 握手”。
+检查私钥路径、文件权限、板卡 `authorized_keys`，并用 `ssh -o BatchMode=yes ... "printf READY"` 复现。
 
-为保护当前 Indy 集成的线程安全，Gateway 同一时间只执行一个握手。重复提交会返回 `HANDSHAKE_BUSY`。
+### `EXECUTABLE_MISSING` / `WORKDIR_MISSING`
 
-### 6.3 握手结果
+登录对应板卡后检查：
 
-结果区包含：
+```bash
+cd /root/openhitls-main/testcode/demo-did/build
+ls -l tls_server tls_client
+```
 
-| 字段 | 含义 |
-| --- | --- |
-| `status` | `succeeded`、`failed` 或 `timed_out` |
-| 原生握手耗时 | C 客户端输出的“握手完成，用时” |
-| Gateway 总耗时 | 从启动进程到进程结束的时间 |
-| HITLS 错误码 | 原生握手失败时输出的十六进制错误码 |
-| TLS Alert | 日志中可识别的 TLS Alert 名称 |
-| 进程退出码 | `unified_tls_client` 的真实退出码 |
-| 本地证书模式 | `NORMAL`、`DID` 或 `UNKNOWN` |
-| 对端证书模式 | 原生端未输出时保持 `UNKNOWN` |
-| DID 验证 | 状态、数字错误码、枚举名和中文说明 |
-| 原生日志 | stdout/stderr 的完整逐行记录 |
+板卡21只需 `tls_server`，板卡22只需 `tls_client`。程序应具有执行权限。
 
-`UNKNOWN` 表示当前原生客户端没有输出足够信息，并不自动表示握手失败。
+### `DEPENDENCY_MISSING`
 
-### 6.4 结果历史
+检查：
 
-“结果历史”最多保存当前 Gateway 进程中的 50 条真实执行记录。
+```bash
+LD_LIBRARY_PATH=/root/openhitls-main/build:/root/indy-vdr/target/release ldd ./tls_server
+LD_LIBRARY_PATH=/root/openhitls-main/build:/root/indy-vdr/target/release ldd ./tls_client
+```
 
-点击任意历史记录会返回握手页面并打开该记录的详细结果。Gateway 重启后，内存历史会清空。
+重点确认 `libindy_vdr.so` 和 openHiTLS 动态库没有显示 `not found`。
 
-## 7. DID 验证结果对照
+### `NATIVE_SERVER_START_TIMEOUT`
 
-| 数字码 | 枚举名 | 含义 |
-| ---: | --- | --- |
-| `0` | `DID_VERIFY_SUCCESS` | DID 验证成功 |
-| `1` | `DID_VERIFY_CERT_PARSE_FAIL` | 证书解析失败 |
-| `2` | `DID_VERIFY_DID_NOT_FOUND` | 证书 SAN 中未找到 DID |
-| `3` | `DID_VERIFY_BLOCKCHAIN_FAIL` | Indy 链上查询或验证失败 |
-| `4` | `DID_VERIFY_PUBKEY_MISMATCH` | 证书公钥与 DID Document 公钥不一致 |
-| `5` | `DID_VERIFY_CERT_TIME_FAIL` | 证书有效期校验失败 |
-| `6` | `DID_VERIFY_SIGNATURE_FAIL` | 签名验证失败 |
-| `7` | `DID_VERIFY_INTERNAL_ERROR` | DID 模块内部错误 |
+最常见原因是实际二进制监听端口与 `.env` 中 `HITLS_TLS_PORT` 不一致，或者板卡21已有进程占用端口。当前最新源码默认是 `12347`。
 
-## 8. 常见错误与处理
+### TLS 成功但 DID 显示失败/unknown
 
-### Gateway offline
+查看验证端日志。若没有 `GET_NYM链上查询成功`，前端会保守地拒绝宣称链上成功。重点检查 `.100` 网络、Genesis、`libindy_vdr.so`、链上 DID 是否存在及证书公钥是否匹配。
 
-表现：页面显示 Gateway offline 或无法加载运行状态。
-
-处理：
-
-1. 确认 `npm run dev` 仍在运行；
-2. 检查终端是否出现端口占用；
-3. 访问 `http://127.0.0.1:8787/api/health`；
-4. 确认 Vite 代理目标和 Gateway 端口一致。
-
-### `BACKEND_NOT_READY`
-
-原因：没有配置原生客户端，或者配置路径无效。
-
-处理：检查 `.env` 中的 `HITLS_CLIENT_BIN` 和 `HITLS_CLIENT_WORKDIR`，修改后重启 Gateway。
-
-### `DID_CERT_PROFILE_NOT_CONFIGURED`
-
-原因：选择 DID/Auto 双向认证，但客户端证书或私钥没有配置、文件不存在。
-
-处理：配置 `HITLS_DID_CERT` 和 `HITLS_DID_KEY`，或者关闭双向认证。
-
-### `PROCESS_SPAWN_FAILED`
-
-原因：操作系统无法启动配置的原生程序。
-
-处理：检查：
-
-- 文件是否与当前操作系统兼容；
-- 是否具有执行权限；
-- 动态库是否可加载；
-- 工作目录是否正确；
-- WSL/Linux 与 Windows 路径是否混用。
-
-### TLS 握手失败
-
-优先查看：
-
-1. HITLS 错误码；
-2. DID 验证枚举；
-3. 原生 stderr/stdout；
-4. 服务端是否监听 `127.0.0.1:12346`；
-5. 客户端和服务器认证模式、证书配置是否匹配；
-6. Indy VDR 是否能够连接账本并查询对应 DID。
-
-## 9. 直接调用 Gateway API
-
-读取运行状态：
+## 10. API 与验证命令
 
 ```powershell
 Invoke-RestMethod http://127.0.0.1:8787/api/runtime
+Invoke-RestMethod http://127.0.0.1:8787/api/preflight
+
+$body = @{ authMode = "did"; mutualTls = $false; timeoutMs = 30000 } | ConvertTo-Json
+Invoke-RestMethod -Method Post -Uri http://127.0.0.1:8787/api/handshakes -ContentType application/json -Body $body
 ```
 
-发起 DID 单向认证：
+代码验证：
 
 ```powershell
-$body = @{
-  authMode = "did"
-  mutualTls = $false
-  timeoutMs = 15000
-} | ConvertTo-Json
-
-Invoke-RestMethod `
-  -Method Post `
-  -Uri http://127.0.0.1:8787/api/handshakes `
-  -ContentType "application/json" `
-  -Body $body
-```
-
-读取握手历史：
-
-```powershell
-Invoke-RestMethod http://127.0.0.1:8787/api/handshakes
-```
-
-## 10. 开发与验证命令
-
-```powershell
-# 只启动 Gateway
-npm run start:gateway
-
-# 同时启动 Gateway 和前端
-npm run dev
-
-# 执行单元测试
-npm run test
-
-# 类型检查并生成生产构建
-npm run build
-
-# 测试和构建全部执行
 npm run check
 ```
 
-生产构建输出到 `dist/`。正式部署时需要由 Web 服务器托管 `dist/`，并把 `/api` 反向代理到 Connector Gateway。
+当前电脑可以完成这些代码级测试；只有控制电脑能完成最终双板卡真实握手验收。

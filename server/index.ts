@@ -1,15 +1,19 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
+import { createReadStream, existsSync, statSync } from "node:fs";
+import path from "node:path";
 import { pathToFileURL } from "node:url";
 import type {
   ApiErrorBody,
   HandshakeHistoryResponse,
   HandshakeRequest,
   HandshakeResult,
+  RuntimePreflight,
 } from "../shared/runtime-contract.js";
 import { AUTH_MODES } from "../shared/runtime-contract.js";
 import { loadLocalEnv } from "./env.js";
 import { GatewayError } from "./gateway-error.js";
 import { runHandshake } from "./handshake-runner.js";
+import { runPreflight } from "./preflight.js";
 import { loadRuntimeConfig, toPublicRuntimeInfo } from "./runtime-config.js";
 
 loadLocalEnv();
@@ -18,6 +22,20 @@ const gatewayStartedAt = new Date();
 const runtimeConfig = loadRuntimeConfig();
 const history: HandshakeResult[] = [];
 let handshakeRunning = false;
+let preflightRunning: Promise<RuntimePreflight> | null = null;
+let preflightSnapshot: { result: RuntimePreflight; expiresAt: number } | null = null;
+const frontendDirectory = path.resolve(process.cwd(), "dist");
+
+const CONTENT_TYPES: Record<string, string> = {
+  ".css": "text/css; charset=utf-8",
+  ".html": "text/html; charset=utf-8",
+  ".ico": "image/x-icon",
+  ".js": "text/javascript; charset=utf-8",
+  ".json": "application/json; charset=utf-8",
+  ".png": "image/png",
+  ".svg": "image/svg+xml",
+  ".webp": "image/webp",
+};
 
 function sendJson(response: ServerResponse, statusCode: number, body: unknown) {
   response.writeHead(statusCode, {
@@ -82,6 +100,55 @@ function sendError(response: ServerResponse, error: unknown) {
   sendJson(response, gatewayError.statusCode, body);
 }
 
+function getPreflight() {
+  if (preflightSnapshot && preflightSnapshot.expiresAt > Date.now()) {
+    return Promise.resolve(preflightSnapshot.result);
+  }
+  if (!preflightRunning) {
+    preflightRunning = runPreflight(runtimeConfig)
+      .then((result) => {
+        preflightSnapshot = { result, expiresAt: Date.now() + 3000 };
+        return result;
+      })
+      .finally(() => {
+        preflightRunning = null;
+      });
+  }
+  return preflightRunning;
+}
+
+function serveFrontend(request: IncomingMessage, response: ServerResponse, pathname: string) {
+  if ((request.method !== "GET" && request.method !== "HEAD") || !existsSync(frontendDirectory)) {
+    return false;
+  }
+  let relativePath: string;
+  try {
+    relativePath = decodeURIComponent(pathname === "/" ? "index.html" : pathname.slice(1));
+  } catch {
+    return false;
+  }
+  let filePath = path.resolve(frontendDirectory, relativePath);
+  if (filePath !== frontendDirectory && !filePath.startsWith(`${frontendDirectory}${path.sep}`)) {
+    return false;
+  }
+  try {
+    if (!statSync(filePath).isFile()) return false;
+  } catch {
+    if (path.extname(relativePath)) return false;
+    filePath = path.join(frontendDirectory, "index.html");
+    if (!existsSync(filePath)) return false;
+  }
+  const extension = path.extname(filePath).toLowerCase();
+  response.writeHead(200, {
+    "content-type": CONTENT_TYPES[extension] ?? "application/octet-stream",
+    "cache-control": extension === ".html" ? "no-cache" : "public, max-age=31536000, immutable",
+    "x-content-type-options": "nosniff",
+  });
+  if (request.method === "HEAD") response.end();
+  else createReadStream(filePath).pipe(response);
+  return true;
+}
+
 export const gatewayServer = createServer(async (request, response) => {
   const url = new URL(request.url ?? "/", "http://gateway.local");
   try {
@@ -91,6 +158,10 @@ export const gatewayServer = createServer(async (request, response) => {
     }
     if (request.method === "GET" && url.pathname === "/api/runtime") {
       sendJson(response, 200, toPublicRuntimeInfo(runtimeConfig, gatewayStartedAt));
+      return;
+    }
+    if (request.method === "GET" && url.pathname === "/api/preflight") {
+      sendJson(response, 200, await getPreflight());
       return;
     }
     if (request.method === "GET" && url.pathname === "/api/handshakes") {
@@ -118,7 +189,11 @@ export const gatewayServer = createServer(async (request, response) => {
       }
       return;
     }
-    throw new GatewayError(404, "NOT_FOUND", "未找到请求的 Gateway API。");
+    if (url.pathname.startsWith("/api/")) {
+      throw new GatewayError(404, "NOT_FOUND", "未找到请求的 Gateway API。");
+    }
+    if (serveFrontend(request, response, url.pathname)) return;
+    throw new GatewayError(404, "NOT_FOUND", "未找到请求的 Gateway API 或前端资源。");
   } catch (error) {
     sendError(response, error);
   }
