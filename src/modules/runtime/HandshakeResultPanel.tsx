@@ -30,8 +30,8 @@ export function HandshakeResultPanel({ result }: { result: HandshakeResult | nul
         <dl className="metric-list">
           <div><dt>HITLS 错误码</dt><dd>{show(result.connection.hitlsCode)}</dd></div>
           <div><dt>TLS Alert</dt><dd>{show(result.connection.tlsAlert)}</dd></div>
-          <div><dt>进程退出码</dt><dd>{show(result.process.exitCode)}</dd></div>
-          <div><dt>TLS 版本</dt><dd>{show(result.connection.tlsVersion)}</dd></div>
+          <div><dt>客户端退出码</dt><dd>{show(result.process.client.exitCode)}</dd></div>
+          <div><dt>服务端退出码</dt><dd>{result.process.server ? show(result.process.server.exitCode) : "外部服务端"}</dd></div>
         </dl>
       </div>
       <div className="result-section">
@@ -42,6 +42,7 @@ export function HandshakeResultPanel({ result }: { result: HandshakeResult | nul
           <strong>{result.didVerification.name ?? "未产生 DID_VerifyResult"}</strong>
         </div>
         <p className="verification-message">{result.didVerification.message}</p>
+        <p className="verification-message">链上验证：{result.didVerification.verifyOnChain ? "已执行或已尝试" : "未执行"}</p>
       </div>
       <div className="result-section">
         <h4>证书协商</h4>
@@ -56,7 +57,7 @@ export function HandshakeResultPanel({ result }: { result: HandshakeResult | nul
         <summary>原生日志 · {result.logs.length} 行</summary>
         <div className="terminal">
           {result.logs.length ? result.logs.map((entry) => (
-            <div className={`terminal-line terminal-line--${entry.level}`} key={`${entry.sequence}-${entry.stream}`}><span>{entry.stream}</span><code>{entry.message}</code></div>
+            <div className={`terminal-line terminal-line--${entry.level}`} key={`${entry.sequence}-${entry.source}-${entry.stream}`}><span>{entry.source}/{entry.stream === "stdout" ? "out" : "err"}</span><code>{entry.message}</code></div>
           )) : <div className="terminal-empty">原生进程没有输出日志。</div>}
         </div>
       </details>

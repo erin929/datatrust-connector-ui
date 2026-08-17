@@ -3,7 +3,7 @@ import useSWR from "swr";
 import useSWRMutation from "swr/mutation";
 import type { HandshakeRequest, HandshakeResult } from "../../../shared/runtime-contract";
 import { StatusTag } from "../../shared/components/ui/StatusTag";
-import { getHandshakeHistory, getRuntime, postHandshake } from "../../shared/services/runtime-api";
+import { getHandshakeHistory, getPreflight, getRuntime, postHandshake } from "../../shared/services/runtime-api";
 import { HandshakeHistory } from "./HandshakeHistory";
 import { HandshakeResultPanel } from "./HandshakeResultPanel";
 import { HandshakeWorkspace } from "./HandshakeWorkspace";
@@ -12,8 +12,8 @@ import { RuntimeOverview } from "./RuntimeOverview";
 type View = "runtime" | "handshake" | "history";
 
 const VIEWS: { id: View; label: string; caption: string }[] = [
-  { id: "runtime", label: "运行状态", caption: "Gateway 与原生后端" },
-  { id: "handshake", label: "真实握手", caption: "执行 unified client" },
+  { id: "runtime", label: "运行状态", caption: "Gateway、板卡与 Indy" },
+  { id: "handshake", label: "真实握手", caption: "SSH 调度双板卡" },
   { id: "history", label: "结果历史", caption: "错误码与原生日志" },
 ];
 
@@ -21,6 +21,7 @@ export function RuntimeConsole() {
   const [view, setView] = useState<View>("runtime");
   const [selectedResult, setSelectedResult] = useState<HandshakeResult | null>(null);
   const runtime = useSWR("/api/runtime", getRuntime, { refreshInterval: 5000 });
+  const preflight = useSWR("/api/preflight", getPreflight, { revalidateOnFocus: false });
   const history = useSWR("/api/handshakes", getHandshakeHistory);
   const mutation = useSWRMutation("/api/handshakes", postHandshake);
 
@@ -59,14 +60,14 @@ export function RuntimeConsole() {
         </nav>
         <div className="side-health-card">
           <div><span className={gatewayOnline ? "pulse-dot" : "pulse-dot pulse-dot--offline"} /><strong>Connector Gateway</strong></div>
-          <p>{gatewayOnline ? "API 已连接；页面展示 Gateway 与 openHiTLS 的真实输出。" : "正在连接本地 Gateway。"}</p>
+          <p>{gatewayOnline ? "API 已连接；页面展示 Gateway、板卡与 openHiTLS 的真实输出。" : "正在连接 Connector Gateway。"}</p>
         </div>
       </aside>
 
       <main className="main enterprise-main">
         <header className="topbar enterprise-topbar">
-          <div><p>Gateway → openHiTLS → Indy VDR → 真实握手结果</p><h1>{VIEWS.find((item) => item.id === view)?.label}</h1><span>证书模式、握手结果与 DID_VerifyResult 使用后端真实输出。</span></div>
-          <div className="topbar__status"><StatusTag tone={gatewayOnline ? "success" : "danger"}>Gateway {gatewayOnline ? "online" : "offline"}</StatusTag><StatusTag tone={backendReady ? "success" : "warning"}>Native {runtime.data?.backend.status ?? "unknown"}</StatusTag></div>
+          <div><p>Browser → Gateway → SSH → openHiTLS → Indy VDR</p><h1>{VIEWS.find((item) => item.id === view)?.label}</h1><span>证书模式、握手结果与 DID_VerifyResult 使用后端真实输出。</span></div>
+          <div className="topbar__status"><StatusTag tone={gatewayOnline ? "success" : "danger"}>Gateway {gatewayOnline ? "online" : "offline"}</StatusTag><StatusTag tone={backendReady ? "success" : "warning"}>Native {runtime.data?.backend.status ?? "unknown"}</StatusTag>{runtime.data?.backend.transport === "ssh" ? <StatusTag tone={preflight.data?.status === "ready" ? "success" : preflight.data?.status === "unavailable" ? "danger" : "warning"}>Hardware {preflight.data?.status ?? "checking"}</StatusTag> : null}</div>
         </header>
 
         {runtime.error ? (
@@ -75,8 +76,8 @@ export function RuntimeConsole() {
           <div className="loading-state"><span className="spinner spinner--dark" />正在读取真实运行状态…</div>
         ) : (
           <>
-            {view === "runtime" ? <RuntimeOverview runtime={runtime.data} /> : null}
-            {view === "handshake" ? <div className="workspace-grid"><HandshakeWorkspace runtime={runtime.data} running={mutation.isMutating} error={mutation.error} onRun={runHandshake} /><HandshakeResultPanel result={selectedResult} /></div> : null}
+            {view === "runtime" ? <RuntimeOverview runtime={runtime.data} preflight={preflight.data} preflightLoading={preflight.isLoading || preflight.isValidating} preflightError={preflight.error} onRefreshPreflight={() => void preflight.mutate()} /> : null}
+            {view === "handshake" ? <div className="workspace-grid"><HandshakeWorkspace runtime={runtime.data} preflight={preflight.data} running={mutation.isMutating} error={mutation.error} onRun={runHandshake} /><HandshakeResultPanel result={selectedResult} /></div> : null}
             {view === "history" ? <HandshakeHistory items={history.data?.items ?? []} onSelect={selectHistory} /> : null}
           </>
         )}

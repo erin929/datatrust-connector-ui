@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from "react";
-import type { AuthMode, HandshakeRequest, RuntimeInfo } from "../../../shared/runtime-contract";
+import type { AuthMode, HandshakeRequest, RuntimeInfo, RuntimePreflight } from "../../../shared/runtime-contract";
 import { SectionCard } from "../../shared/components/ui/SectionCard";
 import { StatusTag } from "../../shared/components/ui/StatusTag";
 import { ApiRequestError } from "../../shared/services/runtime-api";
@@ -12,19 +12,47 @@ const MODES: { id: AuthMode; title: string; description: string }[] = [
 
 type Props = {
   runtime: RuntimeInfo;
+  preflight?: RuntimePreflight;
   running: boolean;
   error?: Error;
   onRun: (request: HandshakeRequest) => Promise<void>;
 };
 
-export function HandshakeWorkspace({ runtime, running, error, onRun }: Props) {
+export function HandshakeWorkspace({ runtime, preflight, running, error, onRun }: Props) {
   const [authMode, setAuthMode] = useState<AuthMode>("traditional");
   const [mutualTls, setMutualTls] = useState(false);
   const [timeoutMs, setTimeoutMs] = useState(15000);
 
   const backendReady = runtime.backend.status === "ready";
-  const didProfileMissing = authMode !== "traditional" && mutualTls && !runtime.backend.certificateProfiles.did.configured;
-  const disabled = running || !backendReady || didProfileMissing;
+  const autoUnsupported = authMode === "auto" && !runtime.backend.capabilities.autoMode;
+  const clientProfileMissing =
+    mutualTls &&
+    (runtime.backend.transport === "ssh" || authMode !== "traditional") &&
+    !runtime.backend.certificateProfiles.did.configured;
+  const didServerProfileMissing =
+    authMode !== "traditional" &&
+    runtime.backend.server.mode !== "external" &&
+    !runtime.backend.certificateProfiles.serverDid.configured;
+  const indyLedgerMissing = authMode !== "traditional" && !runtime.backend.indyLedger.configured;
+  const boardChecks = preflight?.checks.filter(
+    (check) => check.id === "server_board" || check.id === "client_board",
+  );
+  const hardwareBoardsReady =
+    runtime.backend.transport !== "ssh" ||
+    (boardChecks?.length === 2 && boardChecks.every((check) => check.status === "ready"));
+  const ledgerPreflightFailed =
+    authMode !== "traditional" &&
+    preflight?.checks.some(
+      (check) => check.id === "indy_ledger" && check.status !== "ready",
+    );
+  const disabled =
+    running ||
+    !backendReady ||
+    !hardwareBoardsReady ||
+    autoUnsupported ||
+    clientProfileMissing ||
+    didServerProfileMissing ||
+    indyLedgerMissing;
   const apiError = error instanceof ApiRequestError ? error : null;
 
   const submit = async (event: FormEvent) => {
@@ -46,8 +74,8 @@ export function HandshakeWorkspace({ runtime, running, error, onRun }: Props) {
             <div className="mode-options">
               {MODES.map((mode) => (
                 <label className={authMode === mode.id ? "mode-option mode-option--active" : "mode-option"} key={mode.id}>
-                  <input type="radio" name="auth-mode" value={mode.id} checked={authMode === mode.id} onChange={() => setAuthMode(mode.id)} />
-                  <span><strong>{mode.title}</strong><small>{mode.description}</small></span>
+                  <input type="radio" name="auth-mode" value={mode.id} checked={authMode === mode.id} disabled={mode.id === "auto" && !runtime.backend.capabilities.autoMode} onChange={() => setAuthMode(mode.id)} />
+                  <span><strong>{mode.title}</strong><small>{mode.id === "auto" && !runtime.backend.capabilities.autoMode ? "最新板卡程序没有与旧 Auto 等价的模式。" : mode.description}</small></span>
                 </label>
               ))}
             </div>
@@ -63,14 +91,19 @@ export function HandshakeWorkspace({ runtime, running, error, onRun }: Props) {
             </label>
           </div>
           <div className="target-box">
-            <div><span>原生客户端目标</span><strong>{runtime.backend.target.host}:{runtime.backend.target.port}</strong></div>
-            <StatusTag tone={backendReady ? "success" : "warning"}>{runtime.backend.status}</StatusTag>
+            <div><span>{runtime.backend.transport === "ssh" ? "板卡22编译目标" : "原生客户端目标"}</span><strong>{runtime.backend.target.host}:{runtime.backend.target.port}</strong></div>
+            <StatusTag tone={backendReady && hardwareBoardsReady ? "success" : "warning"}>{backendReady && hardwareBoardsReady ? runtime.backend.status : "hardware unavailable"}</StatusTag>
           </div>
           {!backendReady ? <div className="callout callout--warning">{runtime.backend.reason}</div> : null}
-          {didProfileMissing ? <div className="callout callout--warning">DID / Auto 的双向认证需要配置 HITLS_DID_CERT 和 HITLS_DID_KEY；关闭双向认证仍可验证服务器 DID。</div> : null}
+          {!hardwareBoardsReady ? <div className="callout callout--warning">板卡21或板卡22预检尚未通过。请先到“运行状态”检查 SSH、远程文件和动态库。</div> : null}
+          {autoUnsupported ? <div className="callout callout--warning">硬件版 tls_client/tls_server 只对齐 Traditional TLS 和 DID-TLS；Gateway 不会把 --fallback 冒充成旧 Auto。</div> : null}
+          {clientProfileMissing ? <div className="callout callout--warning">当前板卡程序的双向认证需要配置远程客户端证书和私钥路径；关闭双向认证仍可验证服务器 DID。</div> : null}
+          {didServerProfileMissing ? <div className="callout callout--warning">托管 DID / Auto 服务器需要配置 HITLS_SERVER_DID_CERT 和 HITLS_SERVER_DID_KEY。</div> : null}
+          {indyLedgerMissing ? <div className="callout callout--warning">DID / Auto 需要真实 Indy 账本 Genesis；请检查 {runtime.backend.transport === "ssh" ? "HITLS_REMOTE_GENESIS_PATH" : "INDY_GENESIS_PATH"}。</div> : null}
+          {ledgerPreflightFailed ? <div className="callout callout--warning">Indy 端口预检未通过；仍可查看配置，但 DID 握手不能被认定为链上成功，建议先修复账本网络。</div> : null}
           {apiError ? <div className="callout callout--danger"><strong>{apiError.code}</strong><span>{apiError.message}</span></div> : error ? <div className="callout callout--danger">{error.message}</div> : null}
-          <button className="run-button" type="submit" disabled={disabled}>{running ? <><span className="spinner" />原生握手执行中</> : "执行 openHiTLS 握手"}</button>
-          <p className="safety-note">Gateway 使用固定后端配置启动进程，浏览器不能提交可执行路径或任意命令。</p>
+          <button className="run-button" type="submit" disabled={disabled}>{running ? <><span className="spinner" />硬件握手执行中</> : runtime.backend.transport === "ssh" ? "通过 SSH 执行真实握手" : "执行 openHiTLS 握手"}</button>
+          <p className="safety-note">Gateway 只使用固定的板卡、程序和证书配置；浏览器不能提交 SSH 命令或可执行路径。</p>
         </form>
       </SectionCard>
     </div>

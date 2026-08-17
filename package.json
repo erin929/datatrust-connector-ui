@@ -3,13 +3,18 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
+  "engines": {
+    "node": "^20.19.0 || >=22.12.0"
+  },
   "scripts": {
     "dev": "concurrently --kill-others --names gateway,web --prefix-colors cyan,green \"npm:dev:gateway\" \"npm:dev:web\"",
     "dev:gateway": "tsx watch server/index.ts",
     "dev:web": "vite --host 0.0.0.0",
     "start:gateway": "tsx server/index.ts",
+    "start": "npm run start:gateway",
+    "native:build": "bash scripts/build-native-linux.sh",
     "build": "tsc --noEmit && vite build",
-    "test": "node --import tsx --test server/handshake-parser.test.ts server/handshake-runner.test.ts",
+    "test": "node --import tsx --test server/handshake-parser.test.ts server/handshake-runner.test.ts server/runtime-config.test.ts server/ssh-transport.test.ts",
     "check": "npm run test && npm run build",
     "preview": "vite preview --host 0.0.0.0"
   },

@@ -4,6 +4,7 @@ import type {
   HandshakeRequest,
   HandshakeResult,
   RuntimeInfo,
+  RuntimePreflight,
 } from "../../../shared/runtime-contract";
 
 export class ApiRequestError extends Error {
@@ -49,6 +50,7 @@ async function requestJson<T>(url: string, init?: RequestInit): Promise<T> {
 }
 
 export const getRuntime = (url: string) => requestJson<RuntimeInfo>(url);
+export const getPreflight = (url: string) => requestJson<RuntimePreflight>(url);
 export const getHandshakeHistory = (url: string) => requestJson<HandshakeHistoryResponse>(url);
 export const postHandshake = (url: string, { arg }: { arg: HandshakeRequest }) =>
   requestJson<HandshakeResult>(url, {
