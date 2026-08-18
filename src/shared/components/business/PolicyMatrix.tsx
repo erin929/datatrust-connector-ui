@@ -3,8 +3,8 @@ import type { DataField, FieldPolicy } from "../../types/domain";
 
 const actionTone = {
   plain: "success",
-  mask: "warning",
-  encrypt: "info",
+  mask: "info",
+  encrypt: "warning",
   deny: "danger",
 } as const;
 

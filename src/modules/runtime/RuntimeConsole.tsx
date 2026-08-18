@@ -2,26 +2,33 @@ import { useState } from "react";
 import useSWR from "swr";
 import useSWRMutation from "swr/mutation";
 import type { HandshakeRequest, HandshakeResult } from "../../../shared/runtime-contract";
+import type { HandshakeScenario } from "../../../shared/runtime-contract";
 import { StatusTag } from "../../shared/components/ui/StatusTag";
-import { getHandshakeHistory, getPreflight, getRuntime, postHandshake } from "../../shared/services/runtime-api";
+import { getFabricAuditStatus, getHandshakeHistory, getPreflight, getRuntime, postHandshake } from "../../shared/services/runtime-api";
 import { HandshakeHistory } from "./HandshakeHistory";
 import { RuntimeOverview } from "./RuntimeOverview";
 import { SecurityValidation } from "./SecurityValidation";
+import { TrustedFlowDemo } from "../trusted-flow/TrustedFlowDemo";
+import { AuditTraceDemo } from "../trusted-flow/AuditTraceDemo";
 
-type View = "runtime" | "verification" | "history";
+type View = "runtime" | "verification" | "flow" | "audit" | "history";
 
 const VIEWS: { id: View; label: string; caption: string }[] = [
   { id: "runtime", label: "运行状态", caption: "Gateway、板卡与 Indy" },
   { id: "verification", label: "身份认证与互信验证", caption: "六类认证与安全实验" },
-  { id: "history", label: "结果历史", caption: "错误码与原生日志" },
+  { id: "flow", label: "可信数据流通", caption: "目录、合约与字段受控交付" },
+  { id: "audit", label: "审计追溯", caption: "Fabric 存证与 traceId 证据链" },
+  { id: "history", label: "认证日志", caption: "错误码与原生日志" },
 ];
 
 export function RuntimeConsole() {
-  const [view, setView] = useState<View>("runtime");
+  const [view, setView] = useState<View>("flow");
   const [selectedResult, setSelectedResult] = useState<HandshakeResult | null>(null);
+  const [verificationScenario, setVerificationScenario] = useState<HandshakeScenario | undefined>();
   const runtime = useSWR("/api/runtime", getRuntime, { refreshInterval: 5000 });
   const preflight = useSWR("/api/preflight", getPreflight, { revalidateOnFocus: false });
   const history = useSWR("/api/handshakes", getHandshakeHistory);
+  const fabric = useSWR("/api/trusted-flow/fabric/status", getFabricAuditStatus, { refreshInterval: 5000 });
   const mutation = useSWRMutation("/api/handshakes", postHandshake);
 
   const runHandshake = async (request: HandshakeRequest) => {
@@ -35,12 +42,14 @@ export function RuntimeConsole() {
   };
 
   const selectHistory = (result: HandshakeResult) => {
+    setVerificationScenario(undefined);
     setSelectedResult(result);
     setView("verification");
   };
 
   const gatewayOnline = Boolean(runtime.data);
   const backendReady = runtime.data?.backend.status === "ready";
+  const fabricConnected = fabric.data?.connected === true;
 
   return (
     <div className="shell enterprise-shell">
@@ -66,18 +75,18 @@ export function RuntimeConsole() {
 
       <main className="main enterprise-main">
         <header className="topbar enterprise-topbar">
-          <div><p>Browser → Gateway → SSH → openHiTLS → Indy VDR</p><h1>{VIEWS.find((item) => item.id === view)?.label}</h1><span>证书模式、握手结果与 DID_VerifyResult 使用后端真实输出。</span></div>
-          <div className="topbar__status"><StatusTag tone={gatewayOnline ? "success" : "danger"}>Gateway {gatewayOnline ? "online" : "offline"}</StatusTag><StatusTag tone={backendReady ? "success" : "warning"}>Native {runtime.data?.backend.status ?? "unknown"}</StatusTag>{runtime.data?.backend.transport === "ssh" ? <StatusTag tone={preflight.data?.status === "ready" ? "success" : preflight.data?.status === "unavailable" ? "danger" : "warning"}>Hardware {preflight.data?.status ?? "checking"}</StatusTag> : null}</div>
+          <div><h1>{VIEWS.find((item) => item.id === view)?.label}</h1></div>
+          <div className="topbar__status">{view === "flow" || view === "audit" ? <><StatusTag tone={gatewayOnline ? "success" : "danger"}>Gateway {gatewayOnline ? "online" : "offline"}</StatusTag><StatusTag tone={fabricConnected ? "success" : fabric.data ? "danger" : "warning"}>Fabric {fabricConnected ? "connected" : fabric.data ? "unavailable" : "checking"}</StatusTag></> : <><StatusTag tone={gatewayOnline ? "success" : "danger"}>Gateway {gatewayOnline ? "online" : "offline"}</StatusTag><StatusTag tone={backendReady ? "success" : "warning"}>Native {runtime.data?.backend.status ?? "unknown"}</StatusTag>{runtime.data?.backend.transport === "ssh" ? <StatusTag tone={preflight.data?.status === "ready" ? "success" : preflight.data?.status === "unavailable" ? "danger" : "warning"}>Hardware {preflight.data?.status ?? "checking"}</StatusTag> : null}</>}</div>
         </header>
 
-        {runtime.error ? (
+        {view === "flow" ? <TrustedFlowDemo onOpenAuthentication={() => { setVerificationScenario("did_mtls"); setView("verification"); }} onOpenAudit={() => setView("audit")} /> : view === "audit" ? <AuditTraceDemo onOpenFlow={() => setView("flow")} /> : runtime.error ? (
           <div className="fatal-state"><strong>Gateway 不可用</strong><p>{runtime.error.message}</p><button type="button" onClick={() => runtime.mutate()}>重新连接</button></div>
         ) : !runtime.data ? (
           <div className="loading-state"><span className="spinner spinner--dark" />正在读取真实运行状态…</div>
         ) : (
           <>
             {view === "runtime" ? <RuntimeOverview runtime={runtime.data} preflight={preflight.data} preflightLoading={preflight.isLoading || preflight.isValidating} preflightError={preflight.error} onRefreshPreflight={() => void preflight.mutate()} /> : null}
-            {view === "verification" ? <SecurityValidation runtime={runtime.data} preflight={preflight.data} running={mutation.isMutating} error={mutation.error} selectedResult={selectedResult} onRun={runHandshake} /> : null}
+            {view === "verification" ? <SecurityValidation key={verificationScenario ?? "default"} initialScenario={verificationScenario} runtime={runtime.data} preflight={preflight.data} running={mutation.isMutating} error={mutation.error} selectedResult={selectedResult} onRun={runHandshake} /> : null}
             {view === "history" ? <HandshakeHistory items={history.data?.items ?? []} onSelect={selectHistory} /> : null}
           </>
         )}

@@ -119,7 +119,7 @@ function requireHardwareConfig(config: NativeRuntimeConfig) {
 }
 
 function rejectUnsupportedHardwareAuto(request: HandshakeRequest) {
-  if (request.authMode === "auto") {
+  if (request.authMode === "auto" && !request.scenario) {
     throw new GatewayError(
       422,
       "AUTH_MODE_UNSUPPORTED",
@@ -135,6 +135,8 @@ export function buildHardwareClientArgs(
   rejectUnsupportedHardwareAuto(request);
   const client = requireHardwareConfig(config).client;
   const args: string[] = [];
+  if (request.scenario === "pki_to_did") return args;
+  if (request.scenario === "did_to_pki") return ["--did", "--fallback"];
   if (request.authMode === "did") args.push("--did");
   if (request.mutualTls) {
     if (!client.didCertificatePath || !client.didKeyPath) {
@@ -162,20 +164,25 @@ export function buildHardwareServerArgs(
   rejectUnsupportedHardwareAuto(request);
   const server = requireHardwareConfig(config).server;
   const args: string[] = [];
+  const certificatePair = request.scenario === "impersonation"
+    ? [server.fakeDidCertificatePath, server.fakeDidKeyPath]
+    : request.scenario === "unregistered"
+      ? [server.unknownDidCertificatePath, server.unknownDidKeyPath]
+      : [server.didCertificatePath, server.didKeyPath];
+  if (!certificatePair[0] || !certificatePair[1]) {
+    throw new GatewayError(422, "DID_SERVER_PROFILE_NOT_CONFIGURED", "所选板卡认证场景缺少服务端证书或私钥路径。");
+  }
+  if (request.scenario === "did_to_pki") {
+    return ["--server-cert", certificatePair[0], "--server-key", certificatePair[1]];
+  }
   if (request.authMode === "did") {
-    if (!server.didCertificatePath || !server.didKeyPath) {
-      throw new GatewayError(
-        422,
-        "DID_SERVER_PROFILE_NOT_CONFIGURED",
-        "板卡 DID 服务器需要配置远程服务器证书和私钥路径。",
-      );
-    }
     args.push(
       "--did",
+      ...(request.scenario === "pki_to_did" ? ["--fallback"] : []),
       "--server-cert",
-      server.didCertificatePath,
+      certificatePair[0],
       "--server-key",
-      server.didKeyPath,
+      certificatePair[1],
     );
   }
   if (request.mutualTls) args.push("--mtls");

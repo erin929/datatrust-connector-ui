@@ -90,7 +90,7 @@ export function HandshakeWorkspace({ runtime, preflight, running, error, onRun }
             </label>
           </div>
           <div className="target-box">
-            <div><span>{runtime.backend.transport === "ssh" ? "板卡22编译目标" : "原生客户端目标"}</span><strong>{runtime.backend.target.host}:{runtime.backend.target.port}</strong></div>
+            <div><span>{runtime.backend.transport === "ssh" ? "双板卡认证链路" : "原生客户端目标"}</span><strong>{runtime.backend.transport === "ssh" ? "Board 22 → Board 21" : `本机 TLS · 端口 ${runtime.backend.target.port}`}</strong></div>
             <StatusTag tone={backendReady && hardwareBoardsReady ? "success" : "warning"}>{backendReady && hardwareBoardsReady ? runtime.backend.status : "hardware unavailable"}</StatusTag>
           </div>
           {!backendReady ? <div className="callout callout--warning">{runtime.backend.reason}</div> : null}

@@ -1,4 +1,4 @@
-# DataTrust Connector UI（身份认证与互信验证版）
+# DataTrust Connector UI（身份认证、可信流通与 Fabric 审计版）
 
 这是 `openHiTLS + Indy DID` 的真实控制前端。页面保持原有运营平台风格，由控制电脑上的 Connector Gateway 通过 SSH 调度两块鸿蒙智能基座：
 
@@ -25,7 +25,8 @@
 - 板卡22运行 `/root/openhitls-main/testcode/demo-did/build/tls_client`；
 - 当前最新客户端和服务端二进制实际使用 `192.168.50.21:12345`；
 - 支持 Traditional TLS、DID-TLS，以及两者的 mTLS；
-- 最新 `--fallback` 不等价于旧 `Auto`，所以硬件模式禁用 Auto；
+- N3/N4 使用固定白名单场景映射 `--fallback`，不接受浏览器传入任意 Auto 参数；
+- A1/A2 使用固定的伪造身份和未注册 DID 证书路径；
 - DID 成功必须出现验证端的 `GET_NYM链上查询成功` 日志；出现 Indy-VDR 未初始化/未编译警告时不会报告链上验证成功；
 - 每次握手分别记录板卡21和板卡22的日志、退出码、HITLS 错误码和超时状态。
 
@@ -70,6 +71,8 @@ http://控制电脑IP:8787
 
 不要把 `8787`、板卡 SSH 或 Indy 端口直接暴露到公网；互联网访问应放在 VPN/安全隧道后面。
 
+Fabric 审计默认关闭。启用时需在 `.env` 配置 Peer、通道、链码和控制电脑上的 MSP 身份绝对路径。公开仓库只保留链码源码，不保留 Fabric/SSH 私钥、账本数据和运行时二进制。
+
 ## API
 
 | 方法 | 路径 | 说明 |
@@ -79,6 +82,11 @@ http://控制电脑IP:8787
 | `GET` | `/api/preflight` | 并行检查两块板卡 SSH、远程文件/依赖和 Indy 端口 |
 | `GET` | `/api/handshakes` | 当前 Gateway 进程内最多 50 条历史 |
 | `POST` | `/api/handshakes` | 启动一次真实双板卡握手 |
+| `GET` | `/api/trusted-flow/products` | 读取 Gateway 实验数据产品目录 |
+| `POST` | `/api/trusted-flow/executions` | 执行 DID-mTLS、字段策略与 Fabric 审计提交 |
+| `GET` | `/api/trusted-flow/traces` | 读取可信流通记录 |
+| `GET` | `/api/trusted-flow/fabric/status` | 检查 Fabric Peer 与审计链码 |
+| `GET` | `/api/trusted-flow/fabric/audits/:traceId` | 使用 traceId 查询链上审计摘要 |
 
 ## 验证
 
@@ -86,4 +94,4 @@ http://控制电脑IP:8787
 npm run check
 ```
 
-测试覆盖本机兼容参数、硬件参数映射、Auto 边界、SSH 参数与 Shell 引号、硬件默认配置，以及 DID 链上成功/失败的保守解析。
+测试覆盖硬件参数映射、六种固定认证场景、SSH 边界、DID 日志解析，以及数字合约、字段策略和可信流通记录逻辑。

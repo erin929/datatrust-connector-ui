@@ -9,12 +9,23 @@ import type {
   HandshakeResult,
   RuntimePreflight,
 } from "../shared/runtime-contract.js";
-import { AUTH_MODES } from "../shared/runtime-contract.js";
+import { AUTH_MODES, HANDSHAKE_SCENARIOS } from "../shared/runtime-contract.js";
 import { loadLocalEnv } from "./env.js";
+import { commitFabricAudit, getFabricAudit, getFabricAuditStatus } from "./fabric/fabric-audit.js";
 import { GatewayError } from "./gateway-error.js";
 import { runHandshake } from "./handshake-runner.js";
 import { runPreflight } from "./preflight.js";
 import { loadRuntimeConfig, toPublicRuntimeInfo } from "./runtime-config.js";
+import type { TrustedDataProductList, TrustedFlowTraceList } from "../shared/trusted-flow-contract.js";
+import {
+  executeTrustedFlow,
+  finalizeTrustedFlowExecution,
+  getTrustedFlowExecution,
+  listTrustedFlowExecutions,
+  listTrustedProducts,
+  recordTrustedFlowExecution,
+  validateTrustedFlowRequest,
+} from "./trusted-flow/trusted-flow-service.js";
 
 loadLocalEnv();
 
@@ -69,6 +80,9 @@ function validateHandshakeRequest(value: unknown): HandshakeRequest {
     throw new GatewayError(400, "INVALID_REQUEST", "握手请求必须是 JSON 对象。");
   }
   const candidate = value as Partial<HandshakeRequest>;
+  if (candidate.scenario !== undefined && !HANDSHAKE_SCENARIOS.includes(candidate.scenario)) {
+    throw new GatewayError(400, "INVALID_SCENARIO", "scenario 不是允许执行的固定认证场景。");
+  }
   if (!AUTH_MODES.includes(candidate.authMode as HandshakeRequest["authMode"])) {
     throw new GatewayError(400, "INVALID_AUTH_MODE", "authMode 必须是 traditional、did 或 auto。");
   }
@@ -184,6 +198,70 @@ export const gatewayServer = createServer(async (request, response) => {
         history.unshift(result);
         if (history.length > 50) history.length = 50;
         sendJson(response, 201, result);
+      } finally {
+        handshakeRunning = false;
+      }
+      return;
+    }
+    if (request.method === "GET" && url.pathname === "/api/trusted-flow/products") {
+      const body: TrustedDataProductList = { items: listTrustedProducts() };
+      sendJson(response, 200, body);
+      return;
+    }
+    if (request.method === "GET" && url.pathname === "/api/trusted-flow/fabric/status") {
+      sendJson(response, 200, await getFabricAuditStatus());
+      return;
+    }
+    if (request.method === "GET" && url.pathname.startsWith("/api/trusted-flow/fabric/audits/")) {
+      const traceId = decodeURIComponent(url.pathname.slice("/api/trusted-flow/fabric/audits/".length));
+      if (!traceId) throw new GatewayError(400, "TRACE_ID_REQUIRED", "必须提供 traceId。");
+      try {
+        sendJson(response, 200, await getFabricAudit(traceId));
+      } catch (error) {
+        throw new GatewayError(502, "FABRIC_QUERY_FAILED", "无法从 Fabric 查询该审计记录。", {
+          cause: error instanceof Error ? error.message : String(error),
+        });
+      }
+      return;
+    }
+    if (request.method === "GET" && url.pathname === "/api/trusted-flow/traces") {
+      const body: TrustedFlowTraceList = { items: listTrustedFlowExecutions() };
+      sendJson(response, 200, body);
+      return;
+    }
+    if (request.method === "GET" && url.pathname.startsWith("/api/trusted-flow/traces/")) {
+      const traceId = decodeURIComponent(url.pathname.slice("/api/trusted-flow/traces/".length));
+      const execution = getTrustedFlowExecution(traceId);
+      if (!execution) throw new GatewayError(404, "TRACE_NOT_FOUND", "未找到对应 traceId 的可信流通记录。");
+      sendJson(response, 200, execution);
+      return;
+    }
+    if (request.method === "POST" && url.pathname === "/api/trusted-flow/executions") {
+      if (handshakeRunning) throw new GatewayError(409, "HANDSHAKE_BUSY", "已有认证任务正在执行，请稍后再启动可信流通链路。");
+      let flowRequest;
+      try {
+        flowRequest = validateTrustedFlowRequest(await readJsonBody(request));
+      } catch (error) {
+        throw new GatewayError(400, "INVALID_TRUSTED_FLOW_REQUEST", error instanceof Error ? error.message.trim() : "可信流通请求无效。");
+      }
+      handshakeRunning = true;
+      try {
+        const handshakeRequest: HandshakeRequest = { scenario: "did_mtls", authMode: "did", mutualTls: true, timeoutMs: 30000 };
+        const handshake = await runHandshake(runtimeConfig, handshakeRequest);
+        history.unshift(handshake);
+        if (history.length > 50) history.length = 50;
+        const execution = executeTrustedFlow(flowRequest, handshake);
+        try {
+          const receipt = await commitFabricAudit(execution);
+          finalizeTrustedFlowExecution(execution, receipt);
+          recordTrustedFlowExecution(execution);
+          sendJson(response, 201, execution);
+        } catch (error) {
+          throw new GatewayError(502, "FABRIC_COMMIT_FAILED", "业务结果已生成，但 Fabric 审计提交失败，因此本次可信流通未被标记为完成。", {
+            traceId: execution.traceId,
+            cause: error instanceof Error ? error.message : String(error),
+          });
+        }
       } finally {
         handshakeRunning = false;
       }

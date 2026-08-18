@@ -5,3 +5,10 @@ dist/
 *.log
 coverage/
 *.tsbuildinfo
+.env.broken
+fabric-network/artifacts/
+fabric-network/crypto-config/
+fabric-network/data/
+fabric-network/packages/
+fabric-network/runtime/
+tmp/

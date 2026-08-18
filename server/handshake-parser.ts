@@ -14,7 +14,7 @@ type DidResultDefinition = {
 
 const DID_RESULTS: readonly DidResultDefinition[] = [
   { code: 1, name: "DID_VERIFY_CERT_PARSE_FAIL", messages: ["证书解析失败"] },
-  { code: 2, name: "DID_VERIFY_DID_NOT_FOUND", messages: ["证书中未找到DID", "未找到DID"] },
+  { code: 2, name: "DID_VERIFY_DID_NOT_FOUND", messages: ["证书中未找到DID", "未找到DID", "DID未注册或无数据", "DID查询失败"] },
   { code: 3, name: "DID_VERIFY_BLOCKCHAIN_FAIL", messages: ["区块链验证失败", "区块链DID查询失败"] },
   { code: 4, name: "DID_VERIFY_PUBKEY_MISMATCH", messages: ["公钥不匹配"] },
   { code: 5, name: "DID_VERIFY_CERT_TIME_FAIL", messages: ["证书有效期校验失败"] },

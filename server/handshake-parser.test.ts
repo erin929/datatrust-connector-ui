@@ -68,6 +68,17 @@ test("preserves a detailed DID verification failure next to the HITLS code", () 
   assert.equal(outcome.didVerification.name, "DID_VERIFY_PUBKEY_MISMATCH");
 });
 
+test("recognizes the unregistered DID output used by the board build", () => {
+  const outcome = parseNativeOutcome(
+    logs("[ERROR] data字段为null，DID未注册或无数据"),
+    "did",
+    1,
+    false,
+  );
+  assert.equal(outcome.status, "failed");
+  assert.equal(outcome.didVerification.name, "DID_VERIFY_DID_NOT_FOUND");
+});
+
 test("marks a killed native process as timed out", () => {
   const outcome = parseNativeOutcome(logs("开始TLS握手..."), "traditional", null, true);
   assert.equal(outcome.status, "timed_out");

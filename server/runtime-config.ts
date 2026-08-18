@@ -12,6 +12,10 @@ export type SshNodeConfig = {
   executablePath: string;
   didCertificatePath: string | null;
   didKeyPath: string | null;
+  fakeDidCertificatePath?: string | null;
+  fakeDidKeyPath?: string | null;
+  unknownDidCertificatePath?: string | null;
+  unknownDidKeyPath?: string | null;
   libraryPath: string | null;
 };
 
@@ -175,6 +179,22 @@ export function loadRuntimeConfig(
         "./certs/server_indy_cert.der",
       ),
       didKeyPath: remotePath(env.HITLS_SERVER_DID_KEY, "./certs/server_indy_key.der"),
+      fakeDidCertificatePath: remotePath(
+        env.HITLS_SERVER_FAKE_DID_CERT,
+        "./certs/fake_server_indy_cert.der",
+      ),
+      fakeDidKeyPath: remotePath(
+        env.HITLS_SERVER_FAKE_DID_KEY,
+        "./certs/fake_server_indy_key.der",
+      ),
+      unknownDidCertificatePath: remotePath(
+        env.HITLS_SERVER_UNKNOWN_DID_CERT,
+        "./certs/unknown_server_cert.der",
+      ),
+      unknownDidKeyPath: remotePath(
+        env.HITLS_SERVER_UNKNOWN_DID_KEY,
+        "./certs/unknown_server_key.der",
+      ),
       libraryPath: env.HITLS_SERVER_LIBRARY_PATH?.trim() || sharedLibraryPath,
     },
     client: {

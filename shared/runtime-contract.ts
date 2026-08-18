@@ -5,6 +5,15 @@ export type BackendStatus = "ready" | "unconfigured" | "unavailable";
 export type RuntimeTransport = "local" | "ssh";
 export type CertificateMode = "NORMAL" | "DID" | "UNKNOWN";
 export type HandshakeStatus = "succeeded" | "failed" | "timed_out";
+export const HANDSHAKE_SCENARIOS = [
+  "did_tls",
+  "did_mtls",
+  "pki_to_did",
+  "did_to_pki",
+  "impersonation",
+  "unregistered",
+] as const;
+export type HandshakeScenario = (typeof HANDSHAKE_SCENARIOS)[number];
 export type DidVerificationStatus = "succeeded" | "failed" | "not_run" | "unknown";
 
 export type DidVerifyResultName =
@@ -89,6 +98,7 @@ export type RuntimePreflight = {
 };
 
 export type HandshakeRequest = {
+  scenario?: HandshakeScenario;
   authMode: AuthMode;
   mutualTls: boolean;
   timeoutMs: number;

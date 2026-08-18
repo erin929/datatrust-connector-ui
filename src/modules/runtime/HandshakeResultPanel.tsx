@@ -22,7 +22,7 @@ export function HandshakeResultPanel({ result }: { result: HandshakeResult | nul
   return (
     <SectionCard title="握手结果" eyebrow="Native result" className="result-card">
       <div className="result-summary">
-        <div><StatusTag tone={statusTone(result.status)}>{result.status}</StatusTag><h3>{result.connection.completed ? "TLS 握手已完成" : "TLS 握手未完成"}</h3><p>{result.connection.target.host}:{result.connection.target.port} · {new Date(result.startedAt).toLocaleString()}</p></div>
+        <div><StatusTag tone={statusTone(result.status)}>{result.status}</StatusTag><h3>{result.connection.completed ? "TLS 握手已完成" : "TLS 握手未完成"}</h3><p>Board 22 → Board 21 · {new Date(result.startedAt).toLocaleString()}</p></div>
         <strong>{result.connection.nativeHandshakeMs ?? result.connection.durationMs}<small> ms</small></strong>
       </div>
       <div className="result-section">

@@ -106,6 +106,10 @@ const hardwareConfig: NativeRuntimeConfig = {
       executablePath: "./tls_server",
       didCertificatePath: "./certs/server_indy_cert.der",
       didKeyPath: "./certs/server_indy_key.der",
+      fakeDidCertificatePath: "./certs/fake_server_indy_cert.der",
+      fakeDidKeyPath: "./certs/fake_server_indy_key.der",
+      unknownDidCertificatePath: "./certs/unknown_server_cert.der",
+      unknownDidKeyPath: "./certs/unknown_server_key.der",
       libraryPath: "/root/openhitls-main/build:/root/indy-vdr/target/release",
     },
     client: {
@@ -148,5 +152,29 @@ test("does not misrepresent the hardware fallback flag as Auto", () => {
   assert.throws(
     () => buildHardwareClientArgs(hardwareConfig, request({ authMode: "auto" })),
     (error) => error instanceof GatewayError && error.code === "AUTH_MODE_UNSUPPORTED",
+  );
+});
+
+test("maps both hardware fallback scenarios exactly", () => {
+  assert.deepEqual(
+    buildHardwareServerArgs(hardwareConfig, request({ scenario: "pki_to_did", authMode: "did" })),
+    ["--did", "--fallback", "--server-cert", "./certs/server_indy_cert.der", "--server-key", "./certs/server_indy_key.der"],
+  );
+  assert.deepEqual(buildHardwareClientArgs(hardwareConfig, request({ scenario: "pki_to_did", authMode: "did" })), []);
+  assert.deepEqual(
+    buildHardwareServerArgs(hardwareConfig, request({ scenario: "did_to_pki", authMode: "did" })),
+    ["--server-cert", "./certs/server_indy_cert.der", "--server-key", "./certs/server_indy_key.der"],
+  );
+  assert.deepEqual(buildHardwareClientArgs(hardwareConfig, request({ scenario: "did_to_pki", authMode: "did" })), ["--did", "--fallback"]);
+});
+
+test("maps abnormal scenarios to their fixed server profiles", () => {
+  assert.deepEqual(
+    buildHardwareServerArgs(hardwareConfig, request({ scenario: "impersonation", authMode: "did" })),
+    ["--did", "--server-cert", "./certs/fake_server_indy_cert.der", "--server-key", "./certs/fake_server_indy_key.der"],
+  );
+  assert.deepEqual(
+    buildHardwareServerArgs(hardwareConfig, request({ scenario: "unregistered", authMode: "did" })),
+    ["--did", "--server-cert", "./certs/unknown_server_cert.der", "--server-key", "./certs/unknown_server_key.der"],
   );
 });

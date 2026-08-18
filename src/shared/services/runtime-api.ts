@@ -6,6 +6,14 @@ import type {
   RuntimeInfo,
   RuntimePreflight,
 } from "../../../shared/runtime-contract";
+import type {
+  FabricAuditRecord,
+  FabricAuditStatus,
+  TrustedDataProductList,
+  TrustedFlowExecution,
+  TrustedFlowExecutionRequest,
+  TrustedFlowTraceList,
+} from "../../../shared/trusted-flow-contract";
 
 export class ApiRequestError extends Error {
   readonly status: number;
@@ -54,6 +62,18 @@ export const getPreflight = (url: string) => requestJson<RuntimePreflight>(url);
 export const getHandshakeHistory = (url: string) => requestJson<HandshakeHistoryResponse>(url);
 export const postHandshake = (url: string, { arg }: { arg: HandshakeRequest }) =>
   requestJson<HandshakeResult>(url, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(arg),
+  });
+
+export const getTrustedProducts = (url: string) => requestJson<TrustedDataProductList>(url);
+export const getFabricAuditStatus = (url: string) => requestJson<FabricAuditStatus>(url);
+export const getFabricAuditRecord = (url: string) => requestJson<FabricAuditRecord>(url);
+export const getTrustedFlowTraces = (url: string) => requestJson<TrustedFlowTraceList>(url);
+export const getTrustedFlowTrace = (url: string) => requestJson<TrustedFlowExecution>(url);
+export const postTrustedFlowExecution = (url: string, { arg }: { arg: TrustedFlowExecutionRequest }) =>
+  requestJson<TrustedFlowExecution>(url, {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify(arg),

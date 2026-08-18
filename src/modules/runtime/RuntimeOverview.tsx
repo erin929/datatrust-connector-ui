@@ -55,7 +55,7 @@ export function RuntimeOverview({
         </div>
         {backend.reason ? <div className="callout callout--warning">{backend.reason}</div> : null}
         <dl className="fact-list">
-          <div><dt>固定目标</dt><dd>{backend.target.host}:{backend.target.port}</dd></div>
+          <div><dt>固定目标</dt><dd>{hardwareMode ? "Board 21 TLS Server" : `本机端口 ${backend.target.port}`}</dd></div>
           <div><dt>适配器</dt><dd>{backend.adapter}</dd></div>
           <div><dt>原生服务器</dt><dd>{backend.server.mode === "ssh-managed" ? `板卡21 SSH 托管 · ${backend.server.executableName}` : backend.server.mode === "managed" ? `Gateway 托管 · ${backend.server.executableName ?? "未配置"}` : "外部运行"}</dd></div>
           <div><dt>客户端证书</dt><dd>{backend.certificateProfiles.did.configured ? "已配置" : "未配置"}</dd></div>
@@ -80,7 +80,7 @@ export function RuntimeOverview({
             {(preflight?.checks ?? []).map((check) => (
               <div className="preflight-item" key={check.id}>
                 <div><strong>{check.label}</strong><StatusTag tone={checkTone(check.status)}>{check.status}</StatusTag></div>
-                <code>{check.host}</code>
+                {check.id === "server_board" || check.id === "client_board" ? null : <code>{check.host}</code>}
                 <p>{check.detail}</p>
                 <small>{check.latencyMs === null ? "未测量延迟" : `${check.latencyMs} ms`}</small>
               </div>

@@ -1,0 +1,13 @@
+{
+  "name": "datatrust-audit-chaincode",
+  "version": "1.0.0",
+  "private": true,
+  "type": "commonjs",
+  "scripts": {
+    "start:org1": "fabric-chaincode-node server --chaincode-address=0.0.0.0:9991 --chaincode-id=%FABRIC_AUDIT_CCID_ORG1%",
+    "start:org2": "fabric-chaincode-node server --chaincode-address=0.0.0.0:9992 --chaincode-id=%FABRIC_AUDIT_CCID_ORG2%"
+  },
+  "dependencies": {
+    "fabric-shim": "2.5.8"
+  }
+}
